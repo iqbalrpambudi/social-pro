@@ -1,0 +1,607 @@
+openapi: 3.1.0
+info:
+  title: Social Media Uploader API
+  version: 1.0.0
+  description: >
+    API-first service for uploading media and publishing it to connected social
+    accounts. This is an initial contract; provider-specific validation and OAuth
+    administration endpoints should be completed before production.
+servers:
+  - url: https://api.example.com/v1
+    description: Example production server
+security:
+  - BearerAuth: []
+tags:
+  - name: Health
+  - name: Media
+  - name: Social Accounts
+  - name: Publications
+  - name: Webhooks
+paths:
+  /health:
+    get:
+      tags: [Health]
+      security: []
+      summary: Liveness check
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, const: ok }
+                required: [status]
+  /ready:
+    get:
+      tags: [Health]
+      security: []
+      summary: Readiness check
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ready] }
+                required: [status]
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /media/uploads:
+    post:
+      tags: [Media]
+      summary: Create media record and presigned upload session
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMediaUploadRequest"
+      responses:
+        "201":
+          description: Upload session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaUploadSession"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /media/{mediaId}/complete:
+    post:
+      tags: [Media]
+      summary: Confirm that object upload has completed
+      parameters:
+        - $ref: "#/components/parameters/MediaId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          description: Media verification has started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  media:
+                    $ref: "#/components/schemas/Media"
+                required: [media]
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /media/{mediaId}:
+    get:
+      tags: [Media]
+      summary: Get media status and metadata
+      parameters:
+        - $ref: "#/components/parameters/MediaId"
+      responses:
+        "200":
+          description: Media found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Media"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /media:
+    get:
+      tags: [Media]
+      summary: List media
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: "#/components/schemas/MediaStatus"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Media page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaList"
+  /social-accounts:
+    get:
+      tags: [Social Accounts]
+      summary: List connected social accounts
+      responses:
+        "200":
+          description: Connected accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SocialAccount"
+                  nextCursor:
+                    type: [string, "null"]
+                required: [data, nextCursor]
+  /social-accounts/{accountId}/reconnect:
+    post:
+      tags: [Social Accounts]
+      summary: Start OAuth reconnection flow
+      parameters:
+        - in: path
+          name: accountId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OAuth flow started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authorizationUrl: { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+                required: [authorizationUrl, expiresAt]
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /social-accounts/{accountId}:
+    delete:
+      tags: [Social Accounts]
+      summary: Disconnect social account
+      parameters:
+        - in: path
+          name: accountId
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Account disconnected
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /publications:
+    get:
+      tags: [Publications]
+      summary: List publications
+      parameters:
+        - in: query
+          name: status
+          schema:
+            $ref: "#/components/schemas/PublicationStatus"
+        - in: query
+          name: platform
+          schema:
+            $ref: "#/components/schemas/Platform"
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Publication page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicationList"
+    post:
+      tags: [Publications]
+      summary: Create publication to one or more targets
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePublicationRequest"
+      responses:
+        "202":
+          description: Publication accepted for background processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Publication"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /publications/{publicationId}:
+    get:
+      tags: [Publications]
+      summary: Get publication and target statuses
+      parameters:
+        - $ref: "#/components/parameters/PublicationId"
+      responses:
+        "200":
+          description: Publication details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Publication"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /publications/{publicationId}/cancel:
+    post:
+      tags: [Publications]
+      summary: Request cancellation of queued or scheduled publication
+      parameters:
+        - $ref: "#/components/parameters/PublicationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          description: Cancellation request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  status: { type: string, const: cancellation_requested }
+                required: [id, status]
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /publications/{publicationId}/retry:
+    post:
+      tags: [Publications]
+      summary: Retry failed targets that are safe to retry
+      parameters:
+        - $ref: "#/components/parameters/PublicationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          description: Safe targets queued for retry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Publication"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /publications/{publicationId}/events:
+    get:
+      tags: [Publications]
+      summary: Get publication audit events
+      parameters:
+        - $ref: "#/components/parameters/PublicationId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Event page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventList"
+  /webhooks:
+    post:
+      tags: [Webhooks]
+      summary: Register webhook endpoint
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url: { type: string, format: uri }
+                events:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - publication.target.succeeded
+                      - publication.target.failed
+                      - publication.completed
+              required: [url, events]
+      responses:
+        "201":
+          description: Webhook registered; signing secret is returned only once
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  url: { type: string, format: uri }
+                  secret: { type: string }
+                  events:
+                    type: array
+                    items: { type: string }
+                required: [id, url, secret, events]
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+  parameters:
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema: { type: string, minLength: 8, maxLength: 200 }
+      description: Unique key for a logical write operation; reuse only for exact retries.
+    MediaId:
+      in: path
+      name: mediaId
+      required: true
+      schema: { type: string }
+    PublicationId:
+      in: path
+      name: publicationId
+      required: true
+      schema: { type: string }
+    Limit:
+      in: query
+      name: limit
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Cursor:
+      in: query
+      name: cursor
+      schema: { type: string }
+  schemas:
+    Platform:
+      type: string
+      enum: [youtube, tiktok, instagram, facebook]
+    MediaStatus:
+      type: string
+      enum: [upload_pending, processing, ready, failed]
+    PublicationStatus:
+      type: string
+      enum: [draft, scheduled, queued, processing, partially_succeeded, succeeded, failed, cancelled]
+    TargetStatus:
+      type: string
+      enum: [queued, processing, uploading, publishing, succeeded, failed, cancelled, unknown]
+    CreateMediaUploadRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        fileName: { type: string, minLength: 1, maxLength: 255 }
+        contentType:
+          type: string
+          enum: [video/mp4, video/quicktime, video/webm]
+        sizeBytes: { type: integer, minimum: 1 }
+        checksumSha256:
+          type: string
+          pattern: "^[A-Fa-f0-9]{64}$"
+      required: [fileName, contentType, sizeBytes]
+    Media:
+      type: object
+      properties:
+        id: { type: string }
+        status:
+          $ref: "#/components/schemas/MediaStatus"
+        fileName: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer }
+        durationSeconds: { type: number }
+        width: { type: integer }
+        height: { type: integer }
+        createdAt: { type: string, format: date-time }
+      required: [id, status, fileName, contentType, sizeBytes]
+    MediaUploadSession:
+      type: object
+      properties:
+        media:
+          $ref: "#/components/schemas/Media"
+        upload:
+          type: object
+          properties:
+            method: { type: string, enum: [PUT] }
+            url: { type: string, format: uri }
+            headers:
+              type: object
+              additionalProperties: { type: string }
+            expiresAt: { type: string, format: date-time }
+          required: [method, url, headers, expiresAt]
+      required: [media, upload]
+    MediaList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Media"
+        nextCursor:
+          type: [string, "null"]
+      required: [data, nextCursor]
+    SocialAccount:
+      type: object
+      properties:
+        id: { type: string }
+        platform:
+          $ref: "#/components/schemas/Platform"
+        displayName: { type: string }
+        externalAccountId: { type: string }
+        status: { type: string, enum: [connected, expired, revoked, reconnect_required] }
+        capabilities:
+          type: object
+          additionalProperties: { type: boolean }
+      required: [id, platform, displayName, status]
+    PublicationTargetInput:
+      type: object
+      properties:
+        socialAccountId: { type: string }
+        caption: { type: string, maxLength: 5000 }
+        title: { type: string, maxLength: 200 }
+        visibility: { type: string, enum: [public, unlisted, private] }
+        privacyLevel: { type: string }
+        disableComment: { type: boolean }
+        disableDuet: { type: boolean }
+        disableStitch: { type: boolean }
+      required: [socialAccountId]
+    CreatePublicationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        mediaId: { type: string }
+        targets:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/PublicationTargetInput"
+        scheduleAt:
+          type: [string, "null"]
+          format: date-time
+        clientReference: { type: string, maxLength: 255 }
+      required: [mediaId, targets]
+    PublicationTarget:
+      type: object
+      properties:
+        id: { type: string }
+        socialAccountId: { type: string }
+        platform:
+          $ref: "#/components/schemas/Platform"
+        status:
+          $ref: "#/components/schemas/TargetStatus"
+        providerPostId:
+          type: [string, "null"]
+        publishedAt:
+          type: [string, "null"]
+          format: date-time
+        error:
+          type: [object, "null"]
+          properties:
+            code: { type: string }
+            message: { type: string }
+      required: [id, platform, status]
+    Publication:
+      type: object
+      properties:
+        id: { type: string }
+        status:
+          $ref: "#/components/schemas/PublicationStatus"
+        mediaId: { type: string }
+        scheduleAt:
+          type: [string, "null"]
+          format: date-time
+        targets:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicationTarget"
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [id, status, mediaId, targets]
+    PublicationList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Publication"
+        nextCursor:
+          type: [string, "null"]
+      required: [data, nextCursor]
+    EventList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              type: { type: string }
+              createdAt: { type: string, format: date-time }
+              data: { type: object, additionalProperties: true }
+            required: [id, type, createdAt, data]
+        nextCursor:
+          type: [string, "null"]
+      required: [data, nextCursor]
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            requestId: { type: string }
+            details: { type: object, additionalProperties: true }
+          required: [code, message, requestId]
+      required: [error]
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Invalid or missing authentication
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Authenticated but not authorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found in the current workspace
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Resource state or idempotency conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unprocessable:
+      description: Media or target does not meet validation rules
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ServiceUnavailable:
+      description: Service is not ready
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
