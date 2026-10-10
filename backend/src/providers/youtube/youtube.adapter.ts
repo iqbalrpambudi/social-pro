@@ -7,6 +7,11 @@ import type {
 import { generatePresignedDownloadUrl } from '../../storage/s3.js';
 import { logger } from '../../observability/logger.js';
 import { sseHub } from '../../observability/sse.js';
+import { env } from '../../config/env.js';
+import { db } from '../../db/client.js';
+import * as schema from '../../db/schema/index.js';
+import { encryptToken } from '../../security/crypto.js';
+import { eq } from 'drizzle-orm';
 
 export class YouTubeAdapter implements PlatformAdapter {
   readonly platform = 'youtube' as const;
@@ -35,6 +40,55 @@ export class YouTubeAdapter implements PlatformAdapter {
     }
   }
 
+  private async refreshGoogleToken(
+    refreshToken: string,
+    accountId: string
+  ): Promise<string | null> {
+    if (!env.YOUTUBE_CLIENT_ID || !env.YOUTUBE_CLIENT_SECRET) {
+      return null;
+    }
+
+    try {
+      logger.info({ accountId }, 'Mencoba refresh Google OAuth access token...');
+      const res = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: env.YOUTUBE_CLIENT_ID,
+          client_secret: env.YOUTUBE_CLIENT_SECRET,
+          refresh_token: refreshToken,
+          grant_type: 'refresh_token',
+        }),
+      });
+
+      if (!res.ok) {
+        logger.error({ status: res.status }, 'Google token refresh request gagal');
+        return null;
+      }
+
+      const data: any = await res.json();
+      const newAccessToken = data.access_token;
+      const expiresIn = data.expires_in || 3600;
+
+      // Update di database
+      const encrypted = encryptToken(newAccessToken);
+      await db
+        .update(schema.socialAccounts)
+        .set({
+          accessTokenCiphertext: encrypted,
+          tokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.socialAccounts.id, accountId));
+
+      logger.info({ accountId }, 'Google access token berhasil diperbarui otomatis!');
+      return newAccessToken;
+    } catch (err) {
+      logger.error({ err }, 'Exception saat refresh Google token');
+      return null;
+    }
+  }
+
   async publish(ctx: PublishContext): Promise<PublishOutcome> {
     logger.info(
       { targetId: ctx.targetId, publicationId: ctx.publicationId },
@@ -50,7 +104,7 @@ export class YouTubeAdapter implements PlatformAdapter {
       message: 'Menghubungi YouTube Data API untuk inisialisasi resumable upload...',
     });
 
-    const accessToken = ctx.credentials.accessToken;
+    let accessToken = ctx.credentials.accessToken;
 
     // 1. Inisialisasi Resumable Upload Session ke YouTube
     const metadata = {
@@ -69,7 +123,7 @@ export class YouTubeAdapter implements PlatformAdapter {
     const initUrl =
       'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
 
-    const initRes = await fetch(initUrl, {
+    let initRes = await fetch(initUrl, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -79,6 +133,28 @@ export class YouTubeAdapter implements PlatformAdapter {
       },
       body: JSON.stringify(metadata),
     });
+
+    // Jika 401 Unauthorized dan kita punya refreshToken, coba refresh dan retry sekali!
+    if (initRes.status === 401 && ctx.credentials.refreshToken) {
+      logger.warn('Token 401 expired, mencoba auto-refresh...');
+      const freshToken = await this.refreshGoogleToken(
+        ctx.credentials.refreshToken,
+        ctx.accountId
+      );
+      if (freshToken) {
+        accessToken = freshToken;
+        initRes = await fetch(initUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json; charset=UTF-8',
+            'X-Upload-Content-Length': String(ctx.media.sizeBytes),
+            'X-Upload-Content-Type': ctx.media.mimeType,
+          },
+          body: JSON.stringify(metadata),
+        });
+      }
+    }
 
     if (!initRes.ok) {
       const errorText = await initRes.text().catch(() => '');

@@ -25,6 +25,7 @@ export function App() {
   const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
   const [publications, setPublications] = useState<Publication[]>([]);
   const [mediaList, setMediaList] = useState<MediaAsset[]>([]);
+  const [oauthNotice, setOauthNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Refresh all state
   const refreshAll = useCallback(async () => {
@@ -47,6 +48,30 @@ export function App() {
       console.error('Error refreshing state:', err);
     }
   }, []);
+
+  // Handle URL query parameters dari Google OAuth redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get('connected');
+    const channel = params.get('channel');
+    const oauthError = params.get('oauth_error');
+
+    if (connected === 'youtube') {
+      setOauthNotice({
+        type: 'success',
+        message: `Channel YouTube "${channel || 'Channel'}" berhasil dihubungkan! Anda dapat mulai mengunggah video ke YouTube asli.`,
+      });
+      window.history.replaceState({}, '', window.location.pathname);
+      refreshAll();
+      setActiveTab('accounts');
+    } else if (oauthError) {
+      setOauthNotice({
+        type: 'error',
+        message: `Koneksi Google OAuth gagal: ${oauthError}. Periksa pengaturan redirect URI di Google Cloud Console.`,
+      });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [refreshAll]);
 
   // SSE Real-Time Updates
   const { isConnected: sseConnected, latestEvent } = useSSE(
@@ -78,6 +103,49 @@ export function App() {
         quota={quota}
         onRefreshAll={refreshAll}
       />
+
+      {/* OAuth Banner Notification */}
+      {oauthNotice && (
+        <div
+          style={{
+            maxWidth: '1280px',
+            margin: '16px auto 0',
+            padding: '0 24px',
+            width: '100%',
+          }}
+        >
+          <div
+            style={{
+              padding: '12px 18px',
+              borderRadius: 'var(--radius-md)',
+              background:
+                oauthNotice.type === 'success'
+                  ? 'rgba(16, 185, 129, 0.12)'
+                  : 'rgba(239, 68, 68, 0.12)',
+              border: `1px solid ${
+                oauthNotice.type === 'success'
+                  ? 'rgba(16, 185, 129, 0.3)'
+                  : 'rgba(239, 68, 68, 0.3)'
+              }`,
+              color: oauthNotice.type === 'success' ? '#34d399' : '#f87171',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '0.88rem',
+              fontWeight: 500,
+            }}
+          >
+            <span>{oauthNotice.message}</span>
+            <button
+              className="btn btn-ghost"
+              style={{ padding: '4px', color: 'inherit' }}
+              onClick={() => setOauthNotice(null)}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Container */}
       <main style={{ flex: 1, paddingBottom: '60px' }}>
@@ -178,7 +246,10 @@ export function App() {
           <MonitoringView
             publications={publications}
             latestEvent={latestEvent}
+            sseConnected={sseConnected}
             onRefresh={refreshAll}
+            onNavigateToAccounts={() => setActiveTab('accounts')}
+            onNavigateToPublish={() => setActiveTab('publish')}
           />
         )}
 

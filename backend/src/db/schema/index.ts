@@ -122,9 +122,10 @@ export const publicationTargets = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    socialAccountId: uuid('social_account_id')
-      .notNull()
-      .references(() => socialAccounts.id, { onDelete: 'restrict' }),
+    socialAccountId: uuid('social_account_id').references(
+      () => socialAccounts.id,
+      { onDelete: 'set null' }
+    ),
     platform: text('platform').notNull(),
     caption: text('caption'),
     title: text('title'),

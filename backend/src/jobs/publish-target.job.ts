@@ -38,6 +38,16 @@ export async function processPublishTarget(targetId: string): Promise<void> {
     .where(eq(schema.publications.id, target.publicationId))
     .limit(1);
 
+  if (!target.socialAccountId) {
+    logger.error({ targetId }, 'Target tidak memiliki socialAccountId (akun telah diputuskan)');
+    await markTargetFailed(
+      target.id,
+      'ACCOUNT_DISCONNECTED',
+      'Akun sosial tujuan publikasi telah diputuskan.'
+    );
+    return;
+  }
+
   const [socialAccount] = await db
     .select()
     .from(schema.socialAccounts)
@@ -131,6 +141,18 @@ export async function processPublishTarget(targetId: string): Promise<void> {
     (env.ENABLE_MOCK_ADAPTER && !accessToken.startsWith('ya29.'))
   ) {
     platformKey = 'mock';
+  } else if (
+    target.platform === 'youtube' &&
+    !env.ENABLE_MOCK_ADAPTER &&
+    !accessToken.startsWith('ya29.') &&
+    !refreshToken
+  ) {
+    await markTargetFailed(
+      target.id,
+      'MOCK_ACCOUNT_USED',
+      `Akun '${socialAccount.displayName}' adalah akun simulasi (Dev Mode). Karena ENABLE_MOCK_ADAPTER=false di .env, Anda harus menghubungkan channel YouTube asli Anda melalui Google OAuth di tab 'Akun Terhubung'.`
+    );
+    return;
   }
 
   const adapter = registry.get(platformKey);

@@ -25,6 +25,7 @@ class JobQueueService {
     });
 
     await this.boss.start();
+    await this.boss.createQueue(PUBLISH_TARGET_QUEUE);
     this.isStarted = true;
     logger.info('pg-boss background job queue berhasil dimulai');
     return this.boss;

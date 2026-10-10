@@ -37,14 +37,19 @@ export interface PublicationTarget {
   platform: string;
   caption?: string | null;
   title?: string | null;
+  visibility?: 'public' | 'unlisted' | 'private';
   status: string;
+  attemptCount?: number;
   externalPostId?: string | null;
   externalPostUrl?: string | null;
   publishedAt?: string | null;
+  lastErrorCode?: string | null;
+  lastErrorMessage?: string | null;
   error?: {
     code?: string | null;
     message?: string | null;
   } | null;
+  updatedAt?: string;
 }
 
 export interface Publication {
@@ -113,6 +118,10 @@ export const api = {
 
   async getSocialAccounts() {
     return request<{ data: SocialAccount[] }>('/v1/social-accounts');
+  },
+
+  async connectYouTubeOAuth() {
+    return request<{ authorizationUrl: string; state: string }>('/v1/oauth/youtube/connect');
   },
 
   async connectMockAccount(displayName: string, platform: 'youtube' | 'mock' = 'youtube') {

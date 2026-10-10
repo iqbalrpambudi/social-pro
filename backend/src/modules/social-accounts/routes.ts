@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import crypto from 'crypto';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import * as schema from '../../db/schema/index.js';
 import { encryptToken, decryptToken } from '../../security/crypto.js';
@@ -185,6 +185,32 @@ socialAccountsRouter.delete('/:accountId', async (c) => {
         },
       },
       404
+    );
+  }
+
+  // Cek apakah ada publikasi yang sedang aktif memproses upload menggunakan akun ini
+  const [activeTarget] = await db
+    .select({ id: schema.publicationTargets.id })
+    .from(schema.publicationTargets)
+    .where(
+      and(
+        eq(schema.publicationTargets.socialAccountId, account.id),
+        inArray(schema.publicationTargets.status, ['queued', 'preparing', 'uploading'])
+      )
+    )
+    .limit(1);
+
+  if (activeTarget) {
+    return c.json(
+      {
+        error: {
+          code: 'ACCOUNT_IN_USE',
+          message:
+            'Akun sedang digunakan oleh publikasi yang aktif berjalan. Tunggu hingga publikasi selesai atau batalkan terlebih dahulu sebelum memutuskan akun.',
+          requestId,
+        },
+      },
+      400
     );
   }
 

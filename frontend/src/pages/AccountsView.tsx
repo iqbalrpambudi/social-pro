@@ -5,6 +5,9 @@ import {
   Trash2,
   CheckCircle2,
   Info,
+  ExternalLink,
+  X,
+  HelpCircle,
 } from 'lucide-react';
 import { YouTubeIcon } from '../components/YouTubeIcon';
 import { api } from '../lib/api';
@@ -16,9 +19,29 @@ interface AccountsViewProps {
 }
 
 export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onRefresh }) => {
+  const [isConnectingReal, setIsConnectingReal] = useState(false);
   const [isAddingMock, setIsAddingMock] = useState(false);
   const [mockName, setMockName] = useState('My YouTube Channel');
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+  const [showSetupModal, setShowSetupModal] = useState(false);
+
+  // Connect Real YouTube via Google OAuth
+  const handleConnectRealYouTube = async () => {
+    setIsConnectingReal(true);
+    try {
+      const res = await api.connectYouTubeOAuth();
+      // Redirect browser langsung ke Google OAuth Consent Screen
+      window.location.href = res.authorizationUrl;
+    } catch (err: any) {
+      if (err.message?.includes('YOUTUBE_CLIENT_ID') || err.message?.includes('OAUTH_CREDENTIALS_MISSING')) {
+        setShowSetupModal(true);
+      } else {
+        alert(`Gagal memulai Google OAuth: ${err.message}`);
+      }
+    } finally {
+      setIsConnectingReal(false);
+    }
+  };
 
   const handleAddMock = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,30 +85,38 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onRefresh 
         <div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Manajemen Akun Media Sosial</h2>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            Kelola akun resmi yang terhubung dan izin publikasi video
+            Kelola channel YouTube resmi yang terhubung dan izin publikasi video
           </p>
         </div>
 
-        {/* Action to connect account */}
-        <form onSubmit={handleAddMock} style={{ display: 'flex', gap: '8px' }}>
-          <input
-            type="text"
-            className="input"
-            value={mockName}
-            onChange={(e) => setMockName(e.target.value)}
-            placeholder="Nama channel..."
-            style={{ width: '220px', padding: '8px 12px' }}
-          />
+        {/* Buttons for connecting accounts */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Real YouTube OAuth Button */}
           <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={isAddingMock}
-            style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+            onClick={handleConnectRealYouTube}
+            disabled={isConnectingReal}
+            className="btn"
+            style={{
+              background: 'linear-gradient(135deg, #ff0033 0%, #cc0000 100%)',
+              color: '#ffffff',
+              padding: '9px 18px',
+              fontSize: '0.85rem',
+              boxShadow: '0 4px 15px -3px rgba(255, 0, 51, 0.4)',
+            }}
           >
-            <Plus size={16} />
-            {isAddingMock ? 'Menghubungkan...' : 'Tambah Channel (Dev/Mock)'}
+            <YouTubeIcon size={18} color="#ffffff" />
+            {isConnectingReal ? 'Menghubungi Google...' : 'Hubungkan Akun YouTube Asli'}
           </button>
-        </form>
+
+          <button
+            onClick={() => setShowSetupModal(true)}
+            className="btn btn-ghost"
+            style={{ padding: '8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}
+            title="Panduan Setup Google Cloud Console"
+          >
+            <HelpCircle size={18} />
+          </button>
+        </div>
       </div>
 
       {/* Info card */}
@@ -103,15 +134,36 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onRefresh 
         }}
       >
         <Info size={18} color="var(--primary)" style={{ flexShrink: 0, marginTop: '2px' }} />
-        <div>
-          <strong style={{ color: '#fff' }}>Keamanan Kredensial & Batasan Kuota:</strong>
+        <div style={{ flex: 1 }}>
+          <strong style={{ color: '#fff' }}>Koneksi Akun YouTube Asli (Google OAuth 2.0):</strong>
           <p style={{ color: 'var(--text-muted)', marginTop: '4px' }}>
-            Access token dan refresh token disimpan terenkripsi (AES-256-GCM) di backend dan tidak pernah dikirim ke browser. Akun developer YouTube dibatasi 10.000 unit/hari (~6 video/hari). Akun Dev/Mock di atas dapat digunakan untuk melakukan testing tanpa memotong kuota API Google.
+            Saat tombol <strong>"Hubungkan Akun YouTube Asli"</strong> diklik, Anda akan diarahkan ke halaman izin resmi Google untuk memilih akun/channel YouTube Anda. Token disimpan terenkripsi dengan AES-256-GCM.
           </p>
+          <div style={{ marginTop: '8px' }}>
+            <span style={{ fontSize: '0.78rem', color: '#cbd5e1' }}>
+              Belum punya Google Cloud OAuth Client ID?{' '}
+              <button
+                type="button"
+                onClick={() => setShowSetupModal(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#818cf8',
+                  textDecoration: 'underline',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                }}
+              >
+                Lihat 4 Langkah Mudah Setup Google Console &gt;
+              </button>
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Accounts Grid */}
+      {/* Connected Accounts Grid */}
       {accounts.length === 0 ? (
         <div
           className="glass-panel"
@@ -122,13 +174,22 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onRefresh 
         >
           <Users size={40} color="var(--text-dim)" style={{ margin: '0 auto 16px' }} />
           <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '6px' }}>
-            Belum ada akun sosial media yang terhubung
+            Belum ada channel YouTube yang terhubung
           </h3>
           <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-            Hubungkan channel YouTube atau akun simulasi untuk mulai mengunggah video.
+            Hubungkan akun YouTube resmi Anda melalui Google OAuth.
           </p>
-          <button onClick={handleAddMock} className="btn btn-primary" style={{ padding: '10px 20px' }}>
-            <Plus size={16} /> Tambah Channel Dev Sekarang
+          <button
+            onClick={handleConnectRealYouTube}
+            className="btn"
+            style={{
+              background: 'linear-gradient(135deg, #ff0033 0%, #cc0000 100%)',
+              color: '#ffffff',
+              padding: '10px 20px',
+              margin: '0 auto',
+            }}
+          >
+            <YouTubeIcon size={18} color="#ffffff" /> Hubungkan Akun YouTube Asli
           </button>
         </div>
       ) : (
@@ -158,10 +219,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onRefresh 
                       width: '42px',
                       height: '42px',
                       borderRadius: '12px',
-                      background:
-                        acc.platform === 'youtube'
-                          ? 'rgba(255, 0, 51, 0.15)'
-                          : 'rgba(99, 102, 241, 0.15)',
+                      background: 'rgba(255, 0, 51, 0.15)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -172,7 +230,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onRefresh 
                   <div>
                     <h3 style={{ fontSize: '0.98rem', fontWeight: 700 }}>{acc.displayName}</h3>
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'capitalize' }}>
-                      {acc.platform} • ID: {acc.externalAccountId.substring(0, 10)}...
+                      {acc.platform} • ID: {acc.externalAccountId.substring(0, 16)}...
                     </p>
                   </div>
                 </div>
@@ -185,7 +243,7 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onRefresh 
               {/* Capabilities */}
               <div>
                 <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  Fitur yang Didukung:
+                  Izin & Kapabilitas:
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                   <span className="badge badge-info" style={{ fontSize: '0.7rem' }}>
@@ -221,6 +279,161 @@ export const AccountsView: React.FC<AccountsViewProps> = ({ accounts, onRefresh 
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Dev Tool: Add simulated channel */}
+      <div
+        style={{
+          marginTop: '36px',
+          padding: '16px 20px',
+          borderRadius: 'var(--radius-md)',
+          background: 'rgba(255, 255, 255, 0.02)',
+          border: '1px dashed var(--border-subtle)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+        }}
+      >
+        <div>
+          <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>Opsi Pengujian Cepat (Dev Mode)</span>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+            Tambahkan channel tiruan jika Anda ingin mencoba alur publish tanpa memotong kuota harian YouTube asli.
+          </p>
+        </div>
+        <form onSubmit={handleAddMock} style={{ display: 'flex', gap: '8px' }}>
+          <input
+            type="text"
+            className="input"
+            value={mockName}
+            onChange={(e) => setMockName(e.target.value)}
+            placeholder="Nama channel..."
+            style={{ width: '180px', padding: '6px 10px', fontSize: '0.8rem' }}
+          />
+          <button
+            type="submit"
+            className="btn btn-secondary"
+            disabled={isAddingMock}
+            style={{ padding: '6px 14px', fontSize: '0.8rem' }}
+          >
+            <Plus size={14} />
+            {isAddingMock ? 'Menambahkan...' : 'Tambah Channel Simulasi'}
+          </button>
+        </form>
+      </div>
+
+      {/* Google Cloud Console Setup Guidance Modal */}
+      {showSetupModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 50,
+            background: 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={() => setShowSetupModal(false)}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              width: '100%',
+              maxWidth: '620px',
+              padding: '28px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: '18px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <YouTubeIcon size={24} />
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800 }}>
+                  Panduan Menghubungkan Akun YouTube Asli
+                </h3>
+              </div>
+              <button
+                className="btn btn-ghost"
+                style={{ padding: '6px' }}
+                onClick={() => setShowSetupModal(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px', lineHeight: 1.6 }}>
+              Untuk dapat mengunggah video ke YouTube asli melalui API resmi Google, Anda memerlukan <strong>OAuth 2.0 Client ID</strong> dari Google Cloud Console. Berikut langkah cepatnya:
+            </p>
+
+            <ol style={{ fontSize: '0.84rem', color: '#e2e8f0', paddingLeft: '20px', lineHeight: 1.8 }}>
+              <li>
+                Buka <strong><a href="https://console.cloud.google.com/" target="_blank" rel="noreferrer" style={{ color: '#818cf8' }}>Google Cloud Console <ExternalLink size={12} style={{ display: 'inline' }} /></a></strong> dan buat project baru.
+              </li>
+              <li>
+                Di menu <strong>APIs & Services &gt; Library</strong>, cari dan aktifkan <strong>"YouTube Data API v3"</strong>.
+              </li>
+              <li>
+                Di menu <strong>OAuth consent screen</strong>:
+                <ul style={{ paddingLeft: '18px', color: 'var(--text-muted)' }}>
+                  <li>Pilih User Type: <strong>External</strong>.</li>
+                  <li>Di bagian <strong>Test users</strong>, tambahkan alamat email Google/YouTube Anda.</li>
+                </ul>
+              </li>
+              <li>
+                Di menu <strong>Credentials &gt; Create Credentials &gt; OAuth client ID</strong>:
+                <ul style={{ paddingLeft: '18px', color: 'var(--text-muted)' }}>
+                  <li>Application type: <strong>Web application</strong>.</li>
+                  <li>
+                    Authorized redirect URIs tambahkan persis:{' '}
+                    <code style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px', color: '#38bdf8' }}>
+                      http://localhost:4000/v1/oauth/youtube/callback
+                    </code>
+                  </li>
+                </ul>
+              </li>
+              <li>
+                Salin <strong>Client ID</strong> dan <strong>Client Secret</strong> yang didapat, lalu tempelkan ke file <code style={{ color: '#fbbf24' }}>.env</code> di root project:
+                <pre
+                  style={{
+                    background: '#040711',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    marginTop: '8px',
+                    fontSize: '0.78rem',
+                    color: '#a7f3d0',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  YOUTUBE_CLIENT_ID=your_client_id_here.apps.googleusercontent.com{'\n'}
+                  YOUTUBE_CLIENT_SECRET=GOCSPX_your_secret_here{'\n'}
+                  ENABLE_MOCK_ADAPTER=false
+                </pre>
+              </li>
+            </ol>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowSetupModal(false)}
+                style={{ padding: '8px 20px' }}
+              >
+                Saya Mengerti
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

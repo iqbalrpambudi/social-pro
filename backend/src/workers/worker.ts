@@ -1,3 +1,6 @@
+import { eq, and, or, isNull, lte } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import * as schema from '../db/schema/index.js';
 import { jobQueue, PUBLISH_TARGET_QUEUE } from '../jobs/queue.js';
 import { processPublishTarget } from '../jobs/publish-target.job.js';
 import { initializeAdapters } from '../providers/index.js';
@@ -23,7 +26,7 @@ async function startWorker() {
     async (jobs) => {
       for (const job of jobs) {
         const { targetId } = job.data as { targetId: string };
-        logger.info({ jobId: job.id, targetId }, 'Worker mengambil job target publikasi');
+        logger.info({ jobId: job.id, targetId }, 'Worker mengambil job target publikasi dari queue');
 
         try {
           await processPublishTarget(targetId);
@@ -37,9 +40,75 @@ async function startWorker() {
 
   logger.info('✅ Worker siap memproses antrian job publikasi.');
 
+  // Reconciliation loop (Section 10.5 & 19 Dokumen Arsitektur):
+  // Menemukan target yang masih berstatus 'queued' di database dan memastikan job dieksekusi
+  let isReconciling = false;
+  const runReconciliation = async () => {
+    if (isReconciling) return;
+    isReconciling = true;
+
+    try {
+      const pendingTargets = await db
+        .select()
+        .from(schema.publicationTargets)
+        .where(
+          and(
+            eq(schema.publicationTargets.status, 'queued'),
+            or(
+              isNull(schema.publicationTargets.scheduledAt),
+              lte(schema.publicationTargets.scheduledAt, new Date())
+            )
+          )
+        )
+        .limit(5);
+
+      for (const target of pendingTargets) {
+        logger.info(
+          { targetId: target.id, platform: target.platform },
+          'Reconciliation: Menemukan target pending di database, memproses...'
+        );
+        await processPublishTarget(target.id);
+      }
+
+      // 2. Stale / orphaned targets recovery (Section 10.5 & 19 Dokumen Arsitektur):
+      // Target yang tersangkut di status non-terminal ('preparing' atau 'uploading') lebih dari 2 menit
+      const staleThreshold = new Date(Date.now() - 2 * 60 * 1000);
+      const staleTargets = await db
+        .select()
+        .from(schema.publicationTargets)
+        .where(
+          and(
+            or(
+              eq(schema.publicationTargets.status, 'preparing'),
+              eq(schema.publicationTargets.status, 'uploading')
+            ),
+            lte(schema.publicationTargets.updatedAt, staleThreshold)
+          )
+        )
+        .limit(5);
+
+      for (const stale of staleTargets) {
+        logger.warn(
+          { targetId: stale.id, status: stale.status, updatedAt: stale.updatedAt },
+          'Reconciliation: Menemukan target macet/stale (worker crash recovery), memproses ulang...'
+        );
+        await processPublishTarget(stale.id);
+      }
+    } catch (recErr) {
+      logger.error({ recErr }, 'Error saat menjalankan reconciliation loop');
+    } finally {
+      isReconciling = false;
+    }
+  };
+
+  // Jalankan segera saat startup dan berulang tiap 5 detik
+  await runReconciliation();
+  const reconTimer = setInterval(runReconciliation, 5000);
+
   // Graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Menerima sinyal shutdown, menghentikan worker secara graceful...');
+    clearInterval(reconTimer);
     await jobQueue.stop();
     process.exit(0);
   };

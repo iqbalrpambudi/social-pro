@@ -9,6 +9,7 @@ import { pool } from './db/client.js';
 import { s3Client } from './storage/s3.js';
 import { HeadBucketCommand } from '@aws-sdk/client-s3';
 import { authMiddleware } from './modules/auth/middleware.js';
+import { oauthRouter } from './modules/auth/oauth.routes.js';
 import { mediaRouter } from './modules/media/routes.js';
 import { socialAccountsRouter } from './modules/social-accounts/routes.js';
 import { publicationsRouter } from './modules/publications/routes.js';
@@ -128,8 +129,15 @@ app.get('/v1/events/stream', async (c) => {
   });
 });
 
-// 5. Protected API Routes (/v1/...)
-app.use('/v1/*', authMiddleware);
+// 5. Mount OAuth Routes (callback is public)
+app.use('/v1/*', async (c, next) => {
+  if (c.req.path.startsWith('/v1/oauth/youtube/callback')) {
+    return next();
+  }
+  return authMiddleware(c, next);
+});
+
+app.route('/v1/oauth', oauthRouter);
 app.route('/v1/media', mediaRouter);
 app.route('/v1/social-accounts', socialAccountsRouter);
 app.route('/v1/publications', publicationsRouter);

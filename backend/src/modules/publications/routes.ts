@@ -256,13 +256,23 @@ publicationsRouter.get('/', async (c) => {
           .select({
             id: schema.publicationTargets.id,
             publicationId: schema.publicationTargets.publicationId,
+            socialAccountId: schema.publicationTargets.socialAccountId,
             platform: schema.publicationTargets.platform,
+            title: schema.publicationTargets.title,
+            caption: schema.publicationTargets.caption,
+            visibility: schema.publicationTargets.visibility,
             status: schema.publicationTargets.status,
+            attemptCount: schema.publicationTargets.attemptCount,
             externalPostId: schema.publicationTargets.externalPostId,
             externalPostUrl: schema.publicationTargets.externalPostUrl,
             publishedAt: schema.publicationTargets.publishedAt,
             lastErrorCode: schema.publicationTargets.lastErrorCode,
             lastErrorMessage: schema.publicationTargets.lastErrorMessage,
+            error: {
+              code: schema.publicationTargets.lastErrorCode,
+              message: schema.publicationTargets.lastErrorMessage,
+            },
+            updatedAt: schema.publicationTargets.updatedAt,
           })
           .from(schema.publicationTargets)
           .where(inArray(schema.publicationTargets.publicationId, pubIds))
