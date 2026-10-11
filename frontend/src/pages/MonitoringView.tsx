@@ -54,6 +54,15 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  // Reset page saat filter/search berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter, platformFilter, searchQuery]);
+
   // Rekam riwayat SSE event
   useEffect(() => {
     if (latestEvent) {
@@ -103,7 +112,7 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
     setExpandedPubIds((prev) => ({ ...prev, [pubId]: !prev[pubId] }));
   };
 
-  // Metrik Statistik Cepat
+  // Metrik Statistik untuk Tab di Toolbar
   const totalCount = publications.length;
   const activeCount = publications.filter(
     (p) => p.status === 'queued' || p.status === 'processing' || p.status === 'preparing'
@@ -144,49 +153,181 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
     return true;
   });
 
+  // Perhitungan Pagination
+  const totalItems = filteredPublications.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
+  const displayedPublications = filteredPublications.slice(startIndex, endIndex);
+
   // Badge Status Keseluruhan
   const getOverallStatusBadge = (status: string) => {
     switch (status) {
       case 'succeeded':
         return (
-          <span className="badge badge-success" style={{ gap: '6px', padding: '4px 12px' }}>
-            <CheckCircle2 size={14} /> Berhasil Terbit
+          <span className="badge badge-success" style={{ gap: '5px', padding: '3px 10px', fontSize: '0.74rem' }}>
+            <CheckCircle2 size={13} /> Selesai
           </span>
         );
       case 'partially_succeeded':
         return (
-          <span className="badge badge-warning" style={{ gap: '6px', padding: '4px 12px' }}>
-            <AlertCircle size={14} /> Sebagian Berhasil
+          <span className="badge badge-warning" style={{ gap: '5px', padding: '3px 10px', fontSize: '0.74rem' }}>
+            <AlertCircle size={13} /> Parsial
           </span>
         );
       case 'processing':
       case 'uploading':
       case 'preparing':
         return (
-          <span className="badge badge-info" style={{ gap: '6px', padding: '4px 12px' }}>
-            <span className="pulse-dot-info" /> Sedang Diproses
+          <span className="badge badge-info" style={{ gap: '5px', padding: '3px 10px', fontSize: '0.74rem' }}>
+            <span className="pulse-dot-info" style={{ width: '6px', height: '6px' }} /> Proses
           </span>
         );
       case 'queued':
       case 'scheduled':
         return (
-          <span className="badge badge-warning" style={{ gap: '6px', padding: '4px 12px' }}>
-            <Clock size={14} /> Dalam Antrean
+          <span className="badge badge-warning" style={{ gap: '5px', padding: '3px 10px', fontSize: '0.74rem' }}>
+            <Clock size={13} /> Antrean
           </span>
         );
       case 'failed':
         return (
-          <span className="badge badge-error" style={{ gap: '6px', padding: '4px 12px' }}>
-            <AlertCircle size={14} /> Gagal
+          <span className="badge badge-error" style={{ gap: '5px', padding: '3px 10px', fontSize: '0.74rem' }}>
+            <AlertCircle size={13} /> Gagal
           </span>
         );
       default:
-        return <span className="badge badge-neutral">{status}</span>;
+        return <span className="badge badge-neutral" style={{ fontSize: '0.74rem' }}>{status}</span>;
     }
   };
 
-  // Pipeline Stepper Progress (4 tahapan: Queued -> Preparing -> Uploading -> Published/Failed)
-  const renderPipelineStepper = (target: PublicationTarget) => {
+  // Status Terakhir Pipeline untuk Kolom Tabel (Hanya menampilkan status terakhir, tidak multi-step)
+  const renderLatestStage = (target?: PublicationTarget) => {
+    if (!target) return <span style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>-</span>;
+
+    const isFailed = target.status === 'failed' || target.status === 'reauthorization_required';
+    const isPublished = target.status === 'published';
+    const isUploading = target.status === 'uploading';
+    const isPreparing = target.status === 'preparing';
+
+    if (isPublished) {
+      return (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '3px 8px',
+            borderRadius: '5px',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            background: 'var(--color-success-bg)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            color: '#34d399',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <CheckCircle size={12} color="#34d399" />
+          Terbit di Platform
+        </span>
+      );
+    }
+
+    if (isFailed) {
+      return (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '3px 8px',
+            borderRadius: '5px',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            background: 'var(--color-error-bg)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            color: '#f87171',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <XCircle size={12} color="#f87171" />
+          {target.lastErrorCode ? `Gagal: ${target.lastErrorCode}` : 'Gagal Eksekusi'}
+        </span>
+      );
+    }
+
+    if (isUploading) {
+      return (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '3px 8px',
+            borderRadius: '5px',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            background: 'rgba(99, 102, 241, 0.15)',
+            border: '1px solid rgba(99, 102, 241, 0.35)',
+            color: '#818cf8',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <span className="pulse-dot-info" style={{ width: '6px', height: '6px' }} />
+          Pengiriman (Uploading)
+        </span>
+      );
+    }
+
+    if (isPreparing) {
+      return (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '3px 8px',
+            borderRadius: '5px',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            background: 'rgba(99, 102, 241, 0.12)',
+            border: '1px solid rgba(99, 102, 241, 0.25)',
+            color: '#818cf8',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <span className="pulse-dot-info" style={{ width: '6px', height: '6px' }} />
+          Persiapan Media & Token
+        </span>
+      );
+    }
+
+    // Queued / Scheduled
+    return (
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '5px',
+          padding: '3px 8px',
+          borderRadius: '5px',
+          fontSize: '0.72rem',
+          fontWeight: 600,
+          background: 'rgba(245, 158, 11, 0.1)',
+          border: '1px solid rgba(245, 158, 11, 0.25)',
+          color: '#fbbf24',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        <Clock size={12} color="#fbbf24" />
+        Dalam Antrean Worker
+      </span>
+    );
+  };
+
+  // Full Pipeline Stepper untuk Drawer Accordion Detail
+  const renderDetailStepper = (target: PublicationTarget) => {
     const isFailed = target.status === 'failed' || target.status === 'reauthorization_required';
     const isPublished = target.status === 'published';
     const isUploading = target.status === 'uploading';
@@ -197,7 +338,6 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
       {
         id: 'queued',
         label: 'Antrean',
-        desc: 'Menunggu worker',
         done: isPreparing || isUploading || isPublished || isFailed,
         active: isQueued && !isFailed,
         error: false,
@@ -205,7 +345,6 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
       {
         id: 'preparing',
         label: 'Persiapan',
-        desc: 'Validasi token & media',
         done: isUploading || isPublished,
         active: isPreparing && !isFailed,
         error: isFailed && (target.lastErrorCode === 'MOCK_ACCOUNT_USED' || target.lastErrorCode === 'DEPENDENCY_MISSING'),
@@ -213,7 +352,6 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
       {
         id: 'uploading',
         label: 'Pengiriman',
-        desc: 'Resumable upload',
         done: isPublished,
         active: isUploading && !isFailed,
         error: isFailed && target.lastErrorCode === 'REAUTHORIZATION_REQUIRED',
@@ -221,7 +359,6 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
       {
         id: 'published',
         label: isFailed ? 'Gagal' : 'Terbit',
-        desc: isFailed ? (target.lastErrorCode || 'Error') : 'Live di YouTube',
         done: isPublished,
         active: isPublished,
         error: isFailed,
@@ -229,64 +366,54 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
     ];
 
     return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          margin: '8px 0',
-          flexWrap: 'wrap',
-        }}
-      >
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
         {steps.map((step, idx) => {
-          let chipBg = 'rgba(255, 255, 255, 0.03)';
-          let chipBorder = 'rgba(255, 255, 255, 0.06)';
-          let chipColor = 'var(--text-dim)';
+          let bg = 'rgba(255, 255, 255, 0.04)';
+          let border = 'rgba(255, 255, 255, 0.07)';
+          let color = 'var(--text-dim)';
 
           if (step.error) {
-            chipBg = 'var(--color-error-bg)';
-            chipBorder = 'rgba(239, 68, 68, 0.3)';
-            chipColor = '#f87171';
+            bg = 'var(--color-error-bg)';
+            border = 'rgba(239, 68, 68, 0.3)';
+            color = '#f87171';
           } else if (step.done) {
-            chipBg = 'var(--color-success-bg)';
-            chipBorder = 'rgba(16, 185, 129, 0.25)';
-            chipColor = '#34d399';
+            bg = 'var(--color-success-bg)';
+            border = 'rgba(16, 185, 129, 0.25)';
+            color = '#34d399';
           } else if (step.active) {
-            chipBg = 'rgba(99, 102, 241, 0.15)';
-            chipBorder = 'rgba(99, 102, 241, 0.4)';
-            chipColor = '#818cf8';
+            bg = 'rgba(99, 102, 241, 0.15)';
+            border = 'rgba(99, 102, 241, 0.4)';
+            color = '#818cf8';
           }
 
           return (
             <React.Fragment key={step.id}>
-              <div
+              <span
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '5px',
-                  padding: '3px 8px',
-                  borderRadius: '6px',
-                  fontSize: '0.72rem',
+                  gap: '4px',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  fontSize: '0.7rem',
                   fontWeight: 600,
-                  background: chipBg,
-                  border: `1px solid ${chipBorder}`,
-                  color: chipColor,
+                  background: bg,
+                  border: `1px solid ${border}`,
+                  color: color,
                   lineHeight: 1.2,
                 }}
               >
                 {step.error ? (
-                  <XCircle size={12} color="#f87171" />
+                  <XCircle size={11} color="#f87171" />
                 ) : step.done ? (
-                  <CheckCircle size={12} color="#34d399" />
+                  <CheckCircle size={11} color="#34d399" />
                 ) : step.active ? (
-                  <span className="pulse-dot-info" style={{ width: '6px', height: '6px' }} />
-                ) : (
-                  <span style={{ fontSize: '0.65rem', opacity: 0.6 }}>{idx + 1}</span>
-                )}
-                <span>{step.label}</span>
-              </div>
+                  <span className="pulse-dot-info" style={{ width: '5px', height: '5px' }} />
+                ) : null}
+                {step.label}
+              </span>
               {idx < steps.length - 1 && (
-                <span style={{ color: 'rgba(255, 255, 255, 0.2)', fontSize: '0.7rem' }}>→</span>
+                <span style={{ color: 'rgba(255, 255, 255, 0.2)', fontSize: '0.65rem' }}>›</span>
               )}
             </React.Fragment>
           );
@@ -296,7 +423,7 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
   };
 
   return (
-    <div style={{ maxWidth: '1160px', margin: '0 auto', padding: '24px 16px' }}>
+    <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '24px 16px' }}>
       {/* Toast Notification */}
       {toastMessage && (
         <div
@@ -387,7 +514,7 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
 
       {/* Live SSE Console Drawer */}
       {showConsole && (
-        <div className="live-console" style={{ marginBottom: '24px' }}>
+        <div className="live-console" style={{ marginBottom: '20px' }}>
           <div className="live-console-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Radio size={14} color="var(--primary)" />
@@ -462,132 +589,12 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
         </div>
       )}
 
-      {/* Interactive Metrik Overview Cards */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '14px',
-          marginBottom: '24px',
-        }}
-      >
-        {/* Total Card */}
-        <div
-          onClick={() => setFilter('all')}
-          className={`stat-card ${filter === 'all' ? 'active' : ''}`}
-        >
-          <div
-            style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
-              background: 'rgba(255, 255, 255, 0.05)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <FileVideo size={22} color="var(--primary)" />
-          </div>
-          <div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>
-              TOTAL PUBLIKASI
-            </span>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>{totalCount}</div>
-          </div>
-        </div>
-
-        {/* Active Card */}
-        <div
-          onClick={() => setFilter('active')}
-          className={`stat-card ${filter === 'active' ? 'active' : ''}`}
-        >
-          <div
-            style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
-              background: 'rgba(245, 158, 11, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Activity size={22} color="var(--color-warning)" />
-          </div>
-          <div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>
-              DALAM PROSES
-            </span>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--color-warning)' }}>
-              {activeCount}
-            </div>
-          </div>
-        </div>
-
-        {/* Succeeded Card */}
-        <div
-          onClick={() => setFilter('succeeded')}
-          className={`stat-card ${filter === 'succeeded' ? 'active' : ''}`}
-        >
-          <div
-            style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
-              background: 'rgba(16, 185, 129, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <CheckCircle2 size={22} color="var(--color-success)" />
-          </div>
-          <div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>
-              BERHASIL TERBIT
-            </span>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--color-success)' }}>
-              {succeededCount}
-            </div>
-          </div>
-        </div>
-
-        {/* Failed Card */}
-        <div
-          onClick={() => setFilter('failed')}
-          className={`stat-card ${filter === 'failed' ? 'active' : ''}`}
-        >
-          <div
-            style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
-              background: 'rgba(239, 68, 68, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <AlertCircle size={22} color="var(--color-error)" />
-          </div>
-          <div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontWeight: 600 }}>
-              GAGAL / PERLU AKSI
-            </span>
-            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--color-error)' }}>
-              {failedCount}
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Filter & Search Toolbar */}
       <div
         className="glass-panel"
         style={{
           padding: '14px 18px',
-          marginBottom: '20px',
+          marginBottom: '16px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -599,8 +606,8 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
         <div
           style={{
             position: 'relative',
-            flex: '1 1 260px',
-            maxWidth: '380px',
+            flex: '1 1 240px',
+            maxWidth: '340px',
           }}
         >
           <Search
@@ -610,15 +617,15 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
           />
           <input
             type="text"
-            placeholder="Cari nama file, judul, ID..."
+            placeholder="Cari file, judul, ID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="input"
-            style={{ paddingLeft: '36px', fontSize: '0.82rem', height: '38px' }}
+            style={{ paddingLeft: '36px', fontSize: '0.82rem', height: '36px' }}
           />
         </div>
 
-        {/* Filter Pills & Selects */}
+        {/* Status Tab Pills & Platform Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           {/* Status Tab Pills */}
           {(
@@ -639,9 +646,10 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
               <span
                 style={{
                   fontSize: '0.7rem',
-                  padding: '0 6px',
+                  padding: '1px 6px',
                   borderRadius: '9999px',
                   background: filter === tab.id ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+                  fontWeight: 700,
                 }}
               >
                 {tab.count}
@@ -663,7 +671,7 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
         </div>
       </div>
 
-      {/* Publications List */}
+      {/* Publications Table */}
       {filteredPublications.length === 0 ? (
         <div
           className="glass-panel"
@@ -704,427 +712,631 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
           )}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {filteredPublications.map((pub) => {
-            const isExpanded = !!expandedPubIds[pub.id];
-            const hasFailedTargets = pub.targets.some((t) => t.status === 'failed');
-
-            return (
-              <div
-                key={pub.id}
-                className="glass-panel"
-                style={{
-                  padding: '20px',
-                  border:
-                    pub.status === 'failed'
-                      ? '1px solid rgba(239, 68, 68, 0.25)'
-                      : pub.status === 'succeeded'
-                      ? '1px solid rgba(16, 185, 129, 0.2)'
-                      : '1px solid var(--border-subtle)',
-                  transition: 'border-color 0.2s ease',
-                }}
-              >
-                {/* Header Bar */}
-                <div
+        <div
+          className="glass-panel"
+          style={{
+            overflow: 'hidden',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+          }}
+        >
+          <div style={{ overflowX: 'auto' }}>
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                textAlign: 'left',
+                fontSize: '0.82rem',
+                minWidth: '960px',
+              }}
+            >
+              <thead>
+                <tr
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '12px',
+                    background: 'rgba(255, 255, 255, 0.025)',
                     borderBottom: '1px solid var(--border-subtle)',
-                    paddingBottom: '14px',
-                    marginBottom: '14px',
+                    color: 'var(--text-dim)',
+                    fontSize: '0.72rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
                   }}
                 >
-                  {/* Left: Media File Info */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div
-                      style={{
-                        width: '42px',
-                        height: '42px',
-                        borderRadius: '12px',
-                        background:
-                          pub.status === 'succeeded'
-                            ? 'rgba(16, 185, 129, 0.12)'
+                  <th style={{ padding: '12px 14px', width: '36px' }}></th>
+                  <th style={{ padding: '12px 14px', fontWeight: 600 }}>Media & ID</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 600 }}>Target Platform & Judul</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 600 }}>Tahapan</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 600 }}>Status</th>
+                  <th style={{ padding: '12px 14px', fontWeight: 600 }}>Waktu Dibuat</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 600, textAlign: 'right' }}>Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayedPublications.map((pub) => {
+                  const isExpanded = !!expandedPubIds[pub.id];
+                  const primaryTarget = pub.targets[0];
+                  const hasFailedTargets = pub.targets.some((t) => t.status === 'failed');
+                  const isPublished = pub.status === 'succeeded' || pub.targets.some((t) => t.status === 'published');
+                  const publishedUrl = pub.targets.find((t) => t.externalPostUrl)?.externalPostUrl;
+
+                  return (
+                    <React.Fragment key={pub.id}>
+                      {/* Main Table Row (Click anywhere on row to expand/collapse) */}
+                      <tr
+                        onClick={() => toggleExpand(pub.id)}
+                        style={{
+                          cursor: 'pointer',
+                          borderBottom: isExpanded ? 'none' : '1px solid var(--border-subtle)',
+                          background: isExpanded
+                            ? 'rgba(255, 255, 255, 0.03)'
                             : pub.status === 'failed'
-                            ? 'rgba(239, 68, 68, 0.12)'
-                            : 'rgba(99, 102, 241, 0.12)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        border: '1px solid rgba(255, 255, 255, 0.05)',
-                      }}
-                    >
-                      <FileVideo
-                        size={22}
-                        color={
-                          pub.status === 'succeeded'
-                            ? 'var(--color-success)'
-                            : pub.status === 'failed'
-                            ? 'var(--color-error)'
-                            : 'var(--primary)'
-                        }
-                      />
-                    </div>
-                    <div>
-                      <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '2px' }}>
-                        {pub.mediaFilename || 'Video Publikasi'}
-                      </h3>
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          fontSize: '0.74rem',
-                          color: 'var(--text-dim)',
+                            ? 'rgba(239, 68, 68, 0.03)'
+                            : pub.status === 'succeeded'
+                            ? 'rgba(16, 185, 129, 0.015)'
+                            : 'transparent',
+                          transition: 'background 0.15s ease',
                         }}
                       >
-                        <span
-                          style={{
-                            fontFamily: 'var(--font-mono)',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            background: 'rgba(255, 255, 255, 0.04)',
-                            padding: '1px 6px',
-                            borderRadius: '4px',
-                          }}
-                          onClick={() => copyToClipboard(pub.id, pub.id, 'ID Publikasi disalin!')}
-                          title="Klik untuk salin ID Publikasi"
-                        >
-                          ID: {pub.id.substring(0, 8)}...
-                          {copiedId === pub.id ? <Check size={11} color="#34d399" /> : <Copy size={11} />}
-                        </span>
-                        <span>•</span>
-                        <span>{new Date(pub.createdAt).toLocaleString('id-ID')}</span>
-                      </div>
-                    </div>
-                  </div>
+                        {/* Expand Chevron Column */}
+                        <td style={{ padding: '14px 10px 14px 14px', textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleExpand(pub.id);
+                            }}
+                            className="btn btn-ghost"
+                            style={{ padding: '4px', borderRadius: '4px' }}
+                            title={isExpanded ? 'Tutup Detail' : 'Buka Detail (Klik baris)'}
+                          >
+                            {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                          </button>
+                        </td>
 
-                  {/* Right: Status Badge & Actions */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {getOverallStatusBadge(pub.status)}
-
-                    {hasFailedTargets && (
-                      <button
-                        onClick={() => handleRetry(pub.id)}
-                        disabled={retryingId === pub.id}
-                        className="btn btn-secondary"
-                        style={{
-                          padding: '6px 12px',
-                          fontSize: '0.78rem',
-                          background: 'rgba(239, 68, 68, 0.1)',
-                          borderColor: 'rgba(239, 68, 68, 0.3)',
-                          color: '#f87171',
-                        }}
-                      >
-                        <RotateCcw size={13} className={retryingId === pub.id ? 'animate-spin' : ''} />
-                        {retryingId === pub.id ? 'Mengantrekan...' : 'Coba Lagi'}
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => toggleExpand(pub.id)}
-                      className="btn btn-ghost"
-                      style={{ padding: '6px 10px', fontSize: '0.78rem' }}
-                      title="Lihat Detail Teknis"
-                    >
-                      {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                      <span style={{ fontSize: '0.75rem' }}>{isExpanded ? 'Tutup' : 'Detail'}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Targets List */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {pub.targets.map((target) => {
-                    const isFailed =
-                      target.status === 'failed' || target.status === 'reauthorization_required';
-                    const isPublished = target.status === 'published';
-                    const errorMessage =
-                      target.error?.message || target.lastErrorMessage || 'Publikasi gagal diproses.';
-                    const errorCode = target.error?.code || target.lastErrorCode || 'PUBLISH_FAILED';
-                    const isAuthError =
-                      errorCode === 'REAUTHORIZATION_REQUIRED' || errorCode === 'MOCK_ACCOUNT_USED';
-
-                    return (
-                      <div
-                        key={target.id}
-                        style={{
-                          borderRadius: 'var(--radius-md)',
-                          background: 'rgba(255, 255, 255, 0.02)',
-                          border: '1px solid rgba(255, 255, 255, 0.06)',
-                          padding: '12px 14px',
-                        }}
-                      >
-                        {/* Target Platform & Status Header */}
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            flexWrap: 'wrap',
-                            gap: '8px',
-                          }}
-                        >
+                        {/* Media & ID Column */}
+                        <td style={{ padding: '14px 14px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <div
                               style={{
-                                width: '28px',
-                                height: '28px',
+                                width: '32px',
+                                height: '32px',
                                 borderRadius: '8px',
-                                background: target.platform === 'youtube' ? 'rgba(255, 0, 51, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                                background:
+                                  pub.status === 'succeeded'
+                                    ? 'rgba(16, 185, 129, 0.12)'
+                                    : pub.status === 'failed'
+                                    ? 'rgba(239, 68, 68, 0.12)'
+                                    : 'rgba(99, 102, 241, 0.12)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
+                                flexShrink: 0,
                               }}
                             >
-                              {target.platform === 'youtube' ? (
-                                <YouTubeIcon size={16} />
-                              ) : (
-                                <Activity size={16} color="var(--primary)" />
-                              )}
-                            </div>
-                            <div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontSize: '0.9rem', fontWeight: 700, textTransform: 'capitalize' }}>
-                                  {target.platform}
-                                </span>
-                                {target.visibility && (
-                                  <span
-                                    style={{
-                                      fontSize: '0.68rem',
-                                      padding: '1px 6px',
-                                      borderRadius: '4px',
-                                      background: 'rgba(255, 255, 255, 0.06)',
-                                      color: 'var(--text-dim)',
-                                      textTransform: 'uppercase',
-                                    }}
-                                  >
-                                    {target.visibility}
-                                  </span>
-                                )}
-                              </div>
-                              {target.title && (
-                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                  <strong>Judul:</strong> {target.title}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Quick Target Status */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {target.status === 'published' ? (
-                              <span className="badge badge-success" style={{ gap: '4px' }}>
-                                <CheckCircle2 size={13} /> Selesai
-                              </span>
-                            ) : isFailed ? (
-                              <span className="badge badge-error" style={{ gap: '4px' }}>
-                                <AlertCircle size={13} /> Gagal ({errorCode})
-                              </span>
-                            ) : target.status === 'uploading' ? (
-                              <span className="badge badge-info" style={{ gap: '4px' }}>
-                                <span className="pulse-dot-info" /> Mengunggah...
-                              </span>
-                            ) : target.status === 'preparing' ? (
-                              <span className="badge badge-info" style={{ gap: '4px' }}>
-                                <span className="pulse-dot-info" /> Mempersiapkan...
-                              </span>
-                            ) : (
-                              <span className="badge badge-warning" style={{ gap: '4px' }}>
-                                <Clock size={13} /> Dalam Antrean
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Interactive Visual Pipeline Stepper */}
-                        {renderPipelineStepper(target)}
-
-                        {/* Actionable Outcomes */}
-                        {/* 1. If Published: Show YouTube Link Button */}
-                        {isPublished && target.externalPostUrl && (
-                          <div
-                            style={{
-                              marginTop: '10px',
-                              padding: '12px 14px',
-                              borderRadius: 'var(--radius-sm)',
-                              background: 'rgba(16, 185, 129, 0.08)',
-                              border: '1px solid rgba(16, 185, 129, 0.2)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              flexWrap: 'wrap',
-                              gap: '10px',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <CheckCircle2 size={16} color="var(--color-success)" />
-                              <span style={{ fontSize: '0.82rem', color: '#e2e8f0' }}>
-                                Video telah tayang secara publik di platform
-                              </span>
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <button
-                                onClick={() =>
-                                  copyToClipboard(target.externalPostUrl!, target.id, 'Tautan video disalin!')
+                              <FileVideo
+                                size={16}
+                                color={
+                                  pub.status === 'succeeded'
+                                    ? 'var(--color-success)'
+                                    : pub.status === 'failed'
+                                    ? 'var(--color-error)'
+                                    : 'var(--primary)'
                                 }
-                                className="btn btn-secondary"
-                                style={{ padding: '6px 10px', fontSize: '0.75rem' }}
+                              />
+                            </div>
+                            <div style={{ minWidth: 0 }}>
+                              <div
+                                style={{
+                                  fontWeight: 700,
+                                  color: '#f8fafc',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  maxWidth: '220px',
+                                }}
+                                title={pub.mediaFilename || 'Video Publikasi'}
                               >
-                                {copiedId === target.id ? <Check size={13} /> : <Copy size={13} />}
-                                Salin URL
-                              </button>
+                                {pub.mediaFilename || 'Video Publikasi'}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                                <span
+                                  style={{
+                                    fontFamily: 'var(--font-mono)',
+                                    fontSize: '0.72rem',
+                                    color: 'var(--text-dim)',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    copyToClipboard(pub.id, pub.id, 'ID Publikasi disalin!');
+                                  }}
+                                  title="Klik untuk salin ID"
+                                >
+                                  ID: {pub.id.substring(0, 8)}...
+                                  {copiedId === pub.id ? <Check size={10} color="#34d399" /> : <Copy size={10} />}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
 
-                              <a
-                                href={target.externalPostUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="btn btn-primary"
+                        {/* Target Platform & Judul Column */}
+                        <td style={{ padding: '14px 14px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {primaryTarget?.platform === 'youtube' ? (
+                                <YouTubeIcon size={14} />
+                              ) : (
+                                <Activity size={14} color="var(--primary)" />
+                              )}
+                              <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                                {primaryTarget?.platform || 'Unknown'}
+                              </span>
+                              {primaryTarget?.visibility && (
+                                <span
+                                  style={{
+                                    fontSize: '0.65rem',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: 'rgba(255, 255, 255, 0.06)',
+                                    color: 'var(--text-dim)',
+                                    textTransform: 'uppercase',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {primaryTarget.visibility}
+                                </span>
+                              )}
+                              {pub.targets.length > 1 && (
+                                <span
+                                  style={{
+                                    fontSize: '0.65rem',
+                                    padding: '1px 5px',
+                                    borderRadius: '4px',
+                                    background: 'rgba(99, 102, 241, 0.15)',
+                                    color: '#818cf8',
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  +{pub.targets.length - 1} target
+                                </span>
+                              )}
+                            </div>
+                            {primaryTarget?.title && (
+                              <div
                                 style={{
                                   fontSize: '0.75rem',
-                                  padding: '6px 14px',
-                                  background: 'linear-gradient(135deg, #ff0033 0%, #cc0000 100%)',
+                                  color: 'var(--text-muted)',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  maxWidth: '240px',
                                 }}
+                                title={primaryTarget.title}
                               >
-                                <ExternalLink size={13} />
-                                Buka di YouTube
-                              </a>
-                            </div>
+                                {primaryTarget.title}
+                              </div>
+                            )}
                           </div>
-                        )}
+                        </td>
 
-                        {/* 2. If Failed: Clear Contextual Guidance & Direct Solution */}
-                        {isFailed && (
+                        {/* Tahapan Terakhir Column (Hanya status terakhir saja) */}
+                        <td style={{ padding: '14px 14px' }}>
+                          {renderLatestStage(primaryTarget)}
+                        </td>
+
+                        {/* Status Column */}
+                        <td style={{ padding: '14px 14px' }}>
+                          {getOverallStatusBadge(pub.status)}
+                        </td>
+
+                        {/* Waktu Dibuat Column */}
+                        <td style={{ padding: '14px 14px', color: 'var(--text-dim)', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>
+                          {new Date(pub.createdAt).toLocaleDateString('id-ID', {
+                            day: '2-digit',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </td>
+
+                        {/* Aksi Column (Action detail dihilangkan karena click baris sudah expand) */}
+                        <td style={{ padding: '14px 16px', textAlign: 'right' }}>
                           <div
                             style={{
-                              marginTop: '10px',
-                              padding: '14px 16px',
-                              borderRadius: 'var(--radius-sm)',
-                              background: 'rgba(239, 68, 68, 0.08)',
-                              border: '1px solid rgba(239, 68, 68, 0.25)',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '10px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'flex-end',
+                              gap: '6px',
                             }}
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                              <ShieldAlert size={18} color="#f87171" style={{ flexShrink: 0, marginTop: '2px' }} />
-                              <div>
-                                <div
-                                  style={{
-                                    fontSize: '0.82rem',
-                                    fontWeight: 700,
-                                    color: '#f87171',
-                                    marginBottom: '2px',
-                                  }}
-                                >
-                                  Error: {errorCode}
-                                </div>
-                                <p style={{ fontSize: '0.78rem', color: '#fca5a5', lineHeight: '1.4' }}>
-                                  {errorMessage}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Direct Action Buttons for Error Resolution */}
-                            <div
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
-                                marginTop: '4px',
-                                flexWrap: 'wrap',
-                              }}
-                            >
-                              {isAuthError && onNavigateToAccounts && (
-                                <button
-                                  onClick={onNavigateToAccounts}
-                                  className="btn btn-primary"
-                                  style={{
-                                    fontSize: '0.75rem',
-                                    padding: '6px 12px',
-                                    background: 'linear-gradient(135deg, #ff0033 0%, #e11d48 100%)',
-                                  }}
-                                >
-                                  <ArrowRight size={13} />
-                                  Hubungkan Akun YouTube Asli
-                                </button>
-                              )}
-
+                            {isPublished && publishedUrl ? (
+                              <a
+                                href={publishedUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn btn-secondary"
+                                style={{
+                                  fontSize: '0.72rem',
+                                  padding: '5px 10px',
+                                  color: '#ff4d4d',
+                                  borderColor: 'rgba(255, 0, 51, 0.25)',
+                                  background: 'rgba(255, 0, 51, 0.08)',
+                                }}
+                                title="Buka video di platform"
+                              >
+                                <ExternalLink size={12} />
+                                Buka
+                              </a>
+                            ) : hasFailedTargets ? (
                               <button
                                 onClick={() => handleRetry(pub.id)}
                                 disabled={retryingId === pub.id}
                                 className="btn btn-secondary"
-                                style={{ padding: '6px 12px', fontSize: '0.75rem' }}
+                                style={{
+                                  fontSize: '0.72rem',
+                                  padding: '5px 10px',
+                                  color: '#f87171',
+                                  borderColor: 'rgba(239, 68, 68, 0.3)',
+                                  background: 'rgba(239, 68, 68, 0.1)',
+                                }}
+                                title="Coba lagi kirim ke target"
                               >
-                                <RotateCcw size={13} className={retryingId === pub.id ? 'animate-spin' : ''} />
-                                Coba Antrekan Ulang (Retry)
+                                <RotateCcw size={12} className={retryingId === pub.id ? 'animate-spin' : ''} />
+                                Retry
                               </button>
-                            </div>
+                            ) : (
+                              <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem' }}>-</span>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                        </td>
+                      </tr>
 
-                {/* Expandable Technical Diagnostic Drawer */}
-                {isExpanded && (
-                  <div
+                      {/* Expandable Accordion Row for Deep Diagnostics & Resolution */}
+                      {isExpanded && (
+                        <tr style={{ background: 'rgba(0, 0, 0, 0.25)', borderBottom: '1px solid var(--border-subtle)' }}>
+                          <td colSpan={7} style={{ padding: '16px 20px 20px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                              {/* Target Details Breakdown */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#cbd5e1' }}>
+                                  Detail Target Distribusi ({pub.targets.length}):
+                                </div>
+                                {pub.targets.map((target) => {
+                                  const isTargetFailed =
+                                    target.status === 'failed' || target.status === 'reauthorization_required';
+                                  const isTargetPublished = target.status === 'published';
+                                  const errorMessage =
+                                    target.error?.message || target.lastErrorMessage || 'Publikasi gagal diproses.';
+                                  const errorCode = target.error?.code || target.lastErrorCode || 'PUBLISH_FAILED';
+                                  const isAuthError =
+                                    errorCode === 'REAUTHORIZATION_REQUIRED' || errorCode === 'MOCK_ACCOUNT_USED';
+
+                                  return (
+                                    <div
+                                      key={target.id}
+                                      style={{
+                                        borderRadius: 'var(--radius-sm)',
+                                        background: 'rgba(255, 255, 255, 0.02)',
+                                        border: '1px solid rgba(255, 255, 255, 0.06)',
+                                        padding: '12px 14px',
+                                      }}
+                                    >
+                                      {/* Target header */}
+                                      <div
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          flexWrap: 'wrap',
+                                          gap: '8px',
+                                          marginBottom: '8px',
+                                        }}
+                                      >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          {target.platform === 'youtube' ? (
+                                            <YouTubeIcon size={16} />
+                                          ) : (
+                                            <Activity size={16} color="var(--primary)" />
+                                          )}
+                                          <span style={{ fontWeight: 700, textTransform: 'capitalize' }}>
+                                            {target.platform}
+                                          </span>
+                                          {target.title && (
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                              - "{target.title}"
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                                            Percobaan: {target.attemptCount ?? 0}
+                                          </span>
+                                          {isTargetPublished ? (
+                                            <span className="badge badge-success" style={{ fontSize: '0.7rem' }}>
+                                              <CheckCircle2 size={12} /> Selesai
+                                            </span>
+                                          ) : isTargetFailed ? (
+                                            <span className="badge badge-error" style={{ fontSize: '0.7rem' }}>
+                                              <AlertCircle size={12} /> Gagal ({errorCode})
+                                            </span>
+                                          ) : (
+                                            <span className="badge badge-info" style={{ fontSize: '0.7rem' }}>
+                                              {target.status}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* Full Pipeline Stepper di dalam Drawer */}
+                                      <div style={{ marginBottom: '10px' }}>
+                                        {renderDetailStepper(target)}
+                                      </div>
+
+                                      {/* Published Action Banner */}
+                                      {isTargetPublished && target.externalPostUrl && (
+                                        <div
+                                          style={{
+                                            padding: '10px 14px',
+                                            borderRadius: '6px',
+                                            background: 'rgba(16, 185, 129, 0.08)',
+                                            border: '1px solid rgba(16, 185, 129, 0.2)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            flexWrap: 'wrap',
+                                            gap: '8px',
+                                          }}
+                                        >
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <CheckCircle2 size={15} color="var(--color-success)" />
+                                            <span style={{ fontSize: '0.8rem', color: '#e2e8f0' }}>
+                                              Video telah tayang secara publik di platform
+                                            </span>
+                                          </div>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <button
+                                              onClick={() =>
+                                                copyToClipboard(target.externalPostUrl!, target.id, 'Tautan disalin!')
+                                              }
+                                              className="btn btn-secondary"
+                                              style={{ padding: '5px 10px', fontSize: '0.72rem' }}
+                                            >
+                                              {copiedId === target.id ? <Check size={12} /> : <Copy size={12} />}
+                                              Salin URL
+                                            </button>
+                                            <a
+                                              href={target.externalPostUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="btn btn-primary"
+                                              style={{
+                                                fontSize: '0.72rem',
+                                                padding: '5px 12px',
+                                                background: '#ff0033',
+                                                border: '1px solid #cc0000',
+                                                color: '#fff',
+                                              }}
+                                            >
+                                              <ExternalLink size={12} />
+                                              Buka di YouTube
+                                            </a>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Error Resolution Banner */}
+                                      {isTargetFailed && (
+                                        <div
+                                          style={{
+                                            padding: '12px 14px',
+                                            borderRadius: '6px',
+                                            background: 'rgba(239, 68, 68, 0.08)',
+                                            border: '1px solid rgba(239, 68, 68, 0.25)',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '8px',
+                                          }}
+                                        >
+                                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                            <ShieldAlert size={16} color="#f87171" style={{ flexShrink: 0, marginTop: '2px' }} />
+                                            <div>
+                                              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#f87171' }}>
+                                                Error: {errorCode}
+                                              </div>
+                                              <p style={{ fontSize: '0.76rem', color: '#fca5a5', lineHeight: '1.4' }}>
+                                                {errorMessage}
+                                              </p>
+                                            </div>
+                                          </div>
+
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            {isAuthError && onNavigateToAccounts && (
+                                              <button
+                                                onClick={onNavigateToAccounts}
+                                                className="btn btn-primary"
+                                                style={{
+                                                  fontSize: '0.72rem',
+                                                  padding: '5px 10px',
+                                                  background: '#ff0033',
+                                                  border: '1px solid #cc0000',
+                                                  color: '#fff',
+                                                }}
+                                              >
+                                                <ArrowRight size={12} />
+                                                Hubungkan Akun YouTube Asli
+                                              </button>
+                                            )}
+                                            <button
+                                              onClick={() => handleRetry(pub.id)}
+                                              disabled={retryingId === pub.id}
+                                              className="btn btn-secondary"
+                                              style={{ padding: '5px 10px', fontSize: '0.72rem' }}
+                                            >
+                                              <RotateCcw size={12} className={retryingId === pub.id ? 'animate-spin' : ''} />
+                                              Coba Antrekan Ulang (Retry)
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Technical Metadata & UUIDs */}
+                              <div
+                                style={{
+                                  padding: '12px 14px',
+                                  borderRadius: '6px',
+                                  background: 'rgba(0, 0, 0, 0.4)',
+                                  border: '1px solid rgba(255, 255, 255, 0.05)',
+                                  fontSize: '0.72rem',
+                                  fontFamily: 'var(--font-mono)',
+                                  color: 'var(--text-muted)',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '6px',
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span style={{ color: 'var(--text-dim)' }}>Publication UUID:</span>
+                                  <span style={{ color: '#fff' }}>{pub.id}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span style={{ color: 'var(--text-dim)' }}>Media Asset ID:</span>
+                                  <span style={{ color: '#fff' }}>{pub.mediaId}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span style={{ color: 'var(--text-dim)' }}>Created At:</span>
+                                  <span>{new Date(pub.createdAt).toISOString()}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls Bar */}
+          {totalItems > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '12px 18px',
+                borderTop: '1px solid var(--border-subtle)',
+                background: 'rgba(255, 255, 255, 0.015)',
+                flexWrap: 'wrap',
+                gap: '12px',
+                fontSize: '0.8rem',
+              }}
+            >
+              {/* Left: Info data count & page size select */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                  Menampilkan <strong style={{ color: '#f8fafc' }}>{startIndex + 1}</strong> - <strong style={{ color: '#f8fafc' }}>{endIndex}</strong> dari <strong style={{ color: '#f8fafc' }}>{totalItems}</strong> data
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ color: 'var(--text-dim)', fontSize: '0.74rem' }}>Tampilkan:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="select"
                     style={{
-                      marginTop: '16px',
-                      padding: '14px',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'rgba(0, 0, 0, 0.35)',
-                      border: '1px solid rgba(255, 255, 255, 0.05)',
-                      fontSize: '0.75rem',
-                      fontFamily: 'var(--font-mono)',
-                      color: 'var(--text-muted)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '8px',
+                      height: '28px',
+                      padding: '2px 8px',
+                      fontSize: '0.74rem',
+                      width: 'auto',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255, 255, 255, 0.05)', paddingBottom: '6px' }}>
-                      <span style={{ color: 'var(--text-dim)' }}>Publication UUID:</span>
-                      <span style={{ color: '#fff' }}>{pub.id}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255, 255, 255, 0.05)', paddingBottom: '6px' }}>
-                      <span style={{ color: 'var(--text-dim)' }}>Media Asset ID:</span>
-                      <span style={{ color: '#fff' }}>{pub.mediaId}</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255, 255, 255, 0.05)', paddingBottom: '6px' }}>
-                      <span style={{ color: 'var(--text-dim)' }}>Created At:</span>
-                      <span>{new Date(pub.createdAt).toISOString()}</span>
-                    </div>
-                    {pub.targets.map((t, idx) => (
-                      <div key={t.id} style={{ padding: '4px 0', borderTop: idx > 0 ? '1px dashed rgba(255,255,255,0.05)' : 'none' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--text-dim)' }}>Target [{t.platform}] ID:</span>
-                          <span style={{ color: '#818cf8' }}>{t.id}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--text-dim)' }}>Attempt Count:</span>
-                          <span>{t.attemptCount ?? 0}</span>
-                        </div>
-                        {t.updatedAt && (
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ color: 'var(--text-dim)' }}>Last Updated:</span>
-                            <span>{new Date(t.updatedAt).toISOString()}</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                    <option value={5}>5 / hal</option>
+                    <option value={10}>10 / hal</option>
+                    <option value={20}>20 / hal</option>
+                    <option value={50}>50 / hal</option>
+                  </select>
+                </div>
               </div>
-            );
-          })}
+
+              {/* Right: Page navigation buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={safeCurrentPage <= 1}
+                  className="btn btn-secondary"
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '0.75rem',
+                    opacity: safeCurrentPage <= 1 ? 0.4 : 1,
+                    cursor: safeCurrentPage <= 1 ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  ‹ Sebelumnya
+                </button>
+
+                {/* Page Number Chips */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((p) => p === 1 || p === totalPages || Math.abs(p - safeCurrentPage) <= 1)
+                    .map((page, idx, arr) => {
+                      const prev = arr[idx - 1];
+                      const showEllipsis = prev && page - prev > 1;
+
+                      return (
+                        <React.Fragment key={page}>
+                          {showEllipsis && (
+                            <span style={{ color: 'var(--text-dim)', padding: '0 2px', fontSize: '0.75rem' }}>...</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage(page)}
+                            className={`btn ${safeCurrentPage === page ? 'btn-primary' : 'btn-ghost'}`}
+                            style={{
+                              padding: '2px 8px',
+                              minWidth: '28px',
+                              height: '28px',
+                              fontSize: '0.75rem',
+                              fontWeight: safeCurrentPage === page ? 700 : 500,
+                            }}
+                          >
+                            {page}
+                          </button>
+                        </React.Fragment>
+                      );
+                    })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safeCurrentPage >= totalPages}
+                  className="btn btn-secondary"
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '0.75rem',
+                    opacity: safeCurrentPage >= totalPages ? 0.4 : 1,
+                    cursor: safeCurrentPage >= totalPages ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Berikutnya ›
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

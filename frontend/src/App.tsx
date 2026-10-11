@@ -36,7 +36,7 @@ export function App() {
       const [quotaRes, accountsRes, pubsRes, mediaRes] = await Promise.all([
         api.getDailyQuota().catch(() => null),
         api.getSocialAccounts().catch(() => ({ data: [] })),
-        api.listPublications().catch(() => ({ data: [] })),
+        api.listPublications({ limit: 100 }).catch(() => ({ data: [] })),
         api.listMedia().catch(() => ({ data: [] })),
       ]);
 
@@ -78,7 +78,7 @@ export function App() {
     useCallback((event) => {
       console.log('SSE Event diterima:', event);
       // Auto-refresh publications and quota saat ada event SSE
-      api.listPublications().then((res) => res?.data && setPublications(res.data)).catch(() => {});
+      api.listPublications({ limit: 100 }).then((res) => res?.data && setPublications(res.data)).catch(() => {});
       api.getDailyQuota().then((res) => res && setQuota(res)).catch(() => {});
     }, [])
   );

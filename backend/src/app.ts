@@ -13,6 +13,7 @@ import { oauthRouter } from './modules/auth/oauth.routes.js';
 import { mediaRouter } from './modules/media/routes.js';
 import { socialAccountsRouter } from './modules/social-accounts/routes.js';
 import { publicationsRouter } from './modules/publications/routes.js';
+import { openapiSpec } from './openapi.js';
 import type { AppVariables } from './lib/types.js';
 
 export const app = new Hono<{ Variables: AppVariables }>();
@@ -59,6 +60,32 @@ app.use(
 
 // 3. Health & Readiness Endpoints
 app.get('/health', (c) => c.json({ status: 'ok' }));
+
+// 3.1. OpenAPI Spec & Interactive Scalar API Docs
+app.get('/openapi.json', (c) => c.json(openapiSpec));
+
+app.get('/docs', (c) => {
+  return c.html(`<!doctype html>
+<html lang="id">
+  <head>
+    <title>Social Pro - API Documentation</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236366f1'><path d='M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z'/></svg>" />
+    <style>
+      body { margin: 0; background-color: #090d16; }
+    </style>
+  </head>
+  <body>
+    <script
+      id="api-reference"
+      data-url="/openapi.json"
+      data-configuration='{"theme":"purple","layout":"modern","darkMode":true,"showSidebar":true}'
+    ></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  </body>
+</html>`);
+});
 
 app.get('/ready', async (c) => {
   const requestId = c.get('requestId');

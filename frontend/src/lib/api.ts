@@ -222,8 +222,12 @@ export const api = {
     });
   },
 
-  async listPublications() {
-    return request<{ data: Publication[] }>('/v1/publications');
+  async listPublications(params?: { limit?: number; offset?: number }) {
+    const query = new URLSearchParams();
+    if (params?.limit !== undefined) query.set('limit', String(params.limit));
+    if (params?.offset !== undefined) query.set('offset', String(params.offset));
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    return request<{ data: Publication[]; total?: number; limit?: number; offset?: number }>(`/v1/publications${qs}`);
   },
 
   async getPublication(id: string) {

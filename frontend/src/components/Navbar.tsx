@@ -5,6 +5,8 @@ import {
   Settings,
   Database,
   KeyRound,
+  BookOpen,
+  ExternalLink,
 } from 'lucide-react';
 import { YouTubeIcon } from './YouTubeIcon';
 import { getApiBaseUrl, getApiToken } from '../lib/api';
@@ -189,6 +191,25 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
               </div>
             )}
+
+            {/* API Docs Link */}
+            <a
+              href={`${apiUrl}/docs`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary"
+              style={{
+                padding: '6px 12px',
+                fontSize: '0.75rem',
+                gap: '5px',
+                textDecoration: 'none',
+              }}
+              title="Buka Dokumentasi API Interaktif (Scalar/OpenAPI)"
+            >
+              <BookOpen size={14} color="var(--primary)" />
+              <span>API Docs</span>
+              <ExternalLink size={11} color="var(--text-dim)" />
+            </a>
 
             {/* Settings Trigger */}
             <button

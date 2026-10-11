@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import * as schema from '../../db/schema/index.js';
 import { jobQueue } from '../../jobs/queue.js';
@@ -248,6 +248,12 @@ publicationsRouter.get('/', async (c) => {
     .limit(limit)
     .offset(offset);
 
+  const [countResult] = await db
+    .select({ total: sql<number>`cast(count(*) as integer)` })
+    .from(schema.publications)
+    .where(eq(schema.publications.userId, user.id));
+  const total = countResult?.total ?? pubs.length;
+
   // Ambil target untuk tiap publikasi
   const pubIds = pubs.map((p) => p.id);
   const targets =
@@ -295,7 +301,7 @@ publicationsRouter.get('/', async (c) => {
     createdAt: p.createdAt.toISOString(),
   }));
 
-  return c.json({ data, limit, offset });
+  return c.json({ data, total, limit, offset });
 });
 
 // 3. Detail Publikasi Beserta Status Seluruh Target
