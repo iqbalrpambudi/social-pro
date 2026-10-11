@@ -135,24 +135,25 @@ export async function processPublishTarget(targetId: string): Promise<void> {
 
   // 5. Pilih Adapter Platform
   let platformKey = target.platform as Platform;
-  // Jika akun adalah mock atau mode mock aktif dan token bukan real Google token
-  if (
-    target.platform === 'mock' ||
-    (env.ENABLE_MOCK_ADAPTER && !accessToken.startsWith('ya29.'))
-  ) {
+  if (target.platform === 'mock') {
     platformKey = 'mock';
-  } else if (
-    target.platform === 'youtube' &&
-    !env.ENABLE_MOCK_ADAPTER &&
-    !accessToken.startsWith('ya29.') &&
-    !refreshToken
-  ) {
-    await markTargetFailed(
-      target.id,
-      'MOCK_ACCOUNT_USED',
-      `Akun '${socialAccount.displayName}' adalah akun simulasi (Dev Mode). Karena ENABLE_MOCK_ADAPTER=false di .env, Anda harus menghubungkan channel YouTube asli Anda melalui Google OAuth di tab 'Akun Terhubung'.`
-    );
-    return;
+  } else if (target.platform === 'tiktok') {
+    platformKey = 'tiktok';
+  } else if (target.platform === 'youtube') {
+    if (env.ENABLE_MOCK_ADAPTER && !accessToken.startsWith('ya29.')) {
+      platformKey = 'mock';
+    } else if (
+      !env.ENABLE_MOCK_ADAPTER &&
+      !accessToken.startsWith('ya29.') &&
+      !refreshToken
+    ) {
+      await markTargetFailed(
+        target.id,
+        'MOCK_ACCOUNT_USED',
+        `Akun '${socialAccount.displayName}' adalah akun simulasi (Dev Mode). Karena ENABLE_MOCK_ADAPTER=false di .env, Anda harus menghubungkan channel YouTube asli Anda melalui Google OAuth di tab 'Akun Terhubung'.`
+      );
+      return;
+    }
   }
 
   const adapter = registry.get(platformKey);

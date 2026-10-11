@@ -9,6 +9,7 @@ import {
   X,
 } from 'lucide-react';
 import { YouTubeIcon } from '../components/YouTubeIcon';
+import { TikTokIcon } from '../components/TikTokIcon';
 import { api } from '../lib/api';
 import type { SocialAccount, MediaAsset } from '../lib/api';
 
@@ -102,7 +103,7 @@ export const PublishView: React.FC<PublishViewProps> = ({
     }
 
     if (selectedAccountIds.length === 0) {
-      alert('Pilih minimal satu akun YouTube tujuan.');
+      alert('Pilih minimal satu channel YouTube atau akun TikTok tujuan.');
       return;
     }
 
@@ -408,7 +409,7 @@ export const PublishView: React.FC<PublishViewProps> = ({
             {/* Visibilitas */}
             <div>
               <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, marginBottom: '6px' }}>
-                Visibilitas di YouTube
+                Visibilitas & Privasi
               </label>
               <select
                 className="select"
@@ -416,7 +417,7 @@ export const PublishView: React.FC<PublishViewProps> = ({
                 onChange={(e) => setVisibility(e.target.value as any)}
               >
                 <option value="public">Publik (Semua orang dapat menonton)</option>
-                <option value="unlisted">Unlisted (Hanya yang memiliki tautan)</option>
+                <option value="unlisted">Unlisted / Teman (Hanya tautan / Teman)</option>
                 <option value="private">Privat (Hanya Anda)</option>
               </select>
             </div>
@@ -425,7 +426,7 @@ export const PublishView: React.FC<PublishViewProps> = ({
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                 <label style={{ fontSize: '0.84rem', fontWeight: 700 }}>
-                  Channel Tujuan *
+                  Channel / Akun Tujuan *
                 </label>
                 {socialAccounts.length > 0 && (
                   <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
@@ -460,6 +461,7 @@ export const PublishView: React.FC<PublishViewProps> = ({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {socialAccounts.map((acc) => {
                     const isSelected = selectedAccountIds.includes(acc.id);
+                    const isTikTok = acc.platform === 'tiktok';
                     return (
                       <div
                         key={acc.id}
@@ -481,9 +483,16 @@ export const PublishView: React.FC<PublishViewProps> = ({
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <YouTubeIcon size={16} />
+                          {isTikTok ? (
+                            <TikTokIcon size={16} color="#25F4EE" />
+                          ) : (
+                            <YouTubeIcon size={16} />
+                          )}
                           <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#f8fafc' }}>
                             {acc.displayName}
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                            ({isTikTok ? 'TikTok' : 'YouTube'})
                           </span>
                         </div>
                         <input

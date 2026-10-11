@@ -124,7 +124,14 @@ export const api = {
     return request<{ authorizationUrl: string; state: string }>('/v1/oauth/youtube/connect');
   },
 
-  async connectMockAccount(displayName: string, platform: 'youtube' | 'mock' = 'youtube') {
+  async connectTikTokOAuth() {
+    return request<{ authorizationUrl: string; state: string }>('/v1/oauth/tiktok/connect');
+  },
+
+  async connectMockAccount(
+    displayName: string,
+    platform: 'youtube' | 'tiktok' | 'mock' = 'youtube'
+  ) {
     return request<{ message: string; account: SocialAccount }>('/v1/social-accounts/mock-connect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

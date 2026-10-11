@@ -101,6 +101,38 @@ socialAccountsRouter.post('/:platform/connect', async (c) => {
     });
   }
 
+  if (platform === 'tiktok') {
+    if (!env.TIKTOK_CLIENT_KEY || !env.TIKTOK_CLIENT_SECRET) {
+      return c.json(
+        {
+          error: {
+            code: 'OAUTH_NOT_CONFIGURED',
+            message:
+              'TIKTOK_CLIENT_KEY / SECRET belum dikonfigurasi di .env. Anda dapat menggunakan tombol "Connect Mock Account (TikTok)" untuk pengujian lokal.',
+            requestId,
+          },
+        },
+        400
+      );
+    }
+
+    const state = crypto.randomBytes(16).toString('hex');
+    const scopes = 'user.info.basic,video.upload,video.publish';
+
+    const authUrl =
+      `https://www.tiktok.com/v2/auth/authorize/?` +
+      `client_key=${encodeURIComponent(env.TIKTOK_CLIENT_KEY)}` +
+      `&scope=${encodeURIComponent(scopes)}` +
+      `&response_type=code` +
+      `&redirect_uri=${encodeURIComponent(env.TIKTOK_REDIRECT_URI)}` +
+      `&state=${state}`;
+
+    return c.json({
+      authorizationUrl: authUrl,
+      state,
+    });
+  }
+
   // Jika platform lain atau mock
   return c.json(
     {
@@ -119,11 +151,13 @@ socialAccountsRouter.post('/mock-connect', async (c) => {
   const user = c.get('user');
   const body = (await c.req.json().catch(() => ({}))) as {
     displayName?: string;
-    platform?: 'youtube' | 'mock';
+    platform?: 'youtube' | 'tiktok' | 'mock';
   };
 
   const platform = body.platform || 'youtube';
-  const displayName = body.displayName || `My Channel (${platform.toUpperCase()})`;
+  const displayName =
+    body.displayName ||
+    (platform === 'tiktok' ? 'My TikTok Channel' : `My Channel (${platform.toUpperCase()})`);
   const providerAccountId = `acc_${Date.now()}`;
 
   const encryptedAccessToken = encryptToken(`mock_token_${Date.now()}`);

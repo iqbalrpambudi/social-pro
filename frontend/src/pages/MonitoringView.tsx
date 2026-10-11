@@ -22,6 +22,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { YouTubeIcon } from '../components/YouTubeIcon';
+import { TikTokIcon } from '../components/TikTokIcon';
 import { api } from '../lib/api';
 import type { Publication, PublicationTarget } from '../lib/api';
 import type { SSEEventData } from '../hooks/useSSE';
@@ -666,6 +667,7 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
           >
             <option value="all">Semua Platform</option>
             <option value="youtube">YouTube</option>
+            <option value="tiktok">TikTok</option>
             <option value="mock">Mock Simulator</option>
           </select>
         </div>
@@ -868,6 +870,8 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               {primaryTarget?.platform === 'youtube' ? (
                                 <YouTubeIcon size={14} />
+                              ) : primaryTarget?.platform === 'tiktok' ? (
+                                <TikTokIcon size={14} color="#25F4EE" />
                               ) : (
                                 <Activity size={14} color="var(--primary)" />
                               )}
@@ -1039,6 +1043,8 @@ export const MonitoringView: React.FC<MonitoringViewProps> = ({
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                           {target.platform === 'youtube' ? (
                                             <YouTubeIcon size={16} />
+                                          ) : target.platform === 'tiktok' ? (
+                                            <TikTokIcon size={16} color="#25F4EE" />
                                           ) : (
                                             <Activity size={16} color="var(--primary)" />
                                           )}

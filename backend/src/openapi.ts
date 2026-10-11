@@ -307,7 +307,7 @@ export const openapiSpec = {
                 type: 'object',
                 properties: {
                   displayName: { type: 'string', example: 'Dev Channel Simulator' },
-                  platform: { type: 'string', enum: ['youtube', 'mock'], default: 'youtube' },
+                  platform: { type: 'string', enum: ['youtube', 'tiktok', 'mock'], default: 'youtube' },
                 },
               },
             },
@@ -389,6 +389,45 @@ export const openapiSpec = {
         tags: ['OAuth'],
         summary: 'Google OAuth Redirect Callback',
         description: 'Endpoint publik yang menerima callback code dari Google consent screen.',
+        security: [],
+        parameters: [
+          { name: 'code', in: 'query', schema: { type: 'string' } },
+          { name: 'state', in: 'query', schema: { type: 'string' } },
+          { name: 'error', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: {
+          '302': { description: 'Redirect kembali ke antarmuka aplikasi frontend' },
+        },
+      },
+    },
+    '/v1/oauth/tiktok/connect': {
+      get: {
+        tags: ['OAuth'],
+        summary: 'Mulai OAuth TikTok Connect',
+        description: 'Menghasilkan URL consent izin TikTok Login Kit & Content Posting API v2 untuk akun TikTok resmi.',
+        responses: {
+          '200': {
+            description: 'URL otorisasi TikTok berhasil dibuat',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    authorizationUrl: { type: 'string', example: 'https://www.tiktok.com/v2/auth/authorize/?...' },
+                    state: { type: 'string', example: 'state_random_token_123' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/v1/oauth/tiktok/callback': {
+      get: {
+        tags: ['OAuth'],
+        summary: 'TikTok OAuth Redirect Callback',
+        description: 'Endpoint publik yang menerima callback authorization code dari TikTok.',
         security: [],
         parameters: [
           { name: 'code', in: 'query', schema: { type: 'string' } },
@@ -634,7 +673,7 @@ export const openapiSpec = {
         type: 'object',
         properties: {
           id: { type: 'string', format: 'uuid' },
-          platform: { type: 'string', enum: ['youtube', 'mock'], example: 'youtube' },
+          platform: { type: 'string', enum: ['youtube', 'tiktok', 'mock'], example: 'youtube' },
           displayName: { type: 'string', example: 'Channel Saya' },
           externalAccountId: { type: 'string', example: 'UC1234567890' },
           status: { type: 'string', example: 'active' },

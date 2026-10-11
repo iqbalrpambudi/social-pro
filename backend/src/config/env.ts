@@ -42,6 +42,11 @@ const envSchema = z.object({
   YOUTUBE_REDIRECT_URI: z.string().default('http://localhost:4000/v1/oauth/youtube/callback'),
   YOUTUBE_DAILY_QUOTA_LIMIT: z.coerce.number().default(10000),
 
+  // TikTok OAuth & Content Posting API (Opsional untuk dev)
+  TIKTOK_CLIENT_KEY: z.string().optional(),
+  TIKTOK_CLIENT_SECRET: z.string().optional(),
+  TIKTOK_REDIRECT_URI: z.string().default('http://localhost:4000/v1/oauth/tiktok/callback'),
+
   // Mock Adapter
   ENABLE_MOCK_ADAPTER: z
     .string()
