@@ -156,9 +156,12 @@ app.get('/v1/events/stream', async (c) => {
   });
 });
 
-// 5. Mount OAuth Routes (callback is public)
+// 5. Mount OAuth Routes (callback is public) and media video streaming
 app.use('/v1/*', async (c, next) => {
-  if (c.req.path.startsWith('/v1/oauth/youtube/callback')) {
+  if (
+    c.req.path.startsWith('/v1/oauth/youtube/callback') ||
+    c.req.path.endsWith('/stream')
+  ) {
     return next();
   }
   return authMiddleware(c, next);

@@ -7,6 +7,8 @@ import {
   KeyRound,
   BookOpen,
   ExternalLink,
+  ChevronDown,
+  RotateCcw,
 } from 'lucide-react';
 import { YouTubeIcon } from './YouTubeIcon';
 import { getApiBaseUrl, getApiToken } from '../lib/api';
@@ -26,6 +28,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onRefreshAll,
 }) => {
   const [showSettings, setShowSettings] = useState(false);
+  const [showStatusPopup, setShowStatusPopup] = useState(false);
   const [apiUrl, setApiUrl] = useState(getApiBaseUrl());
   const [apiToken, setApiToken] = useState(getApiToken());
 
@@ -113,84 +116,177 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Status Badges & Quota Widget */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            {/* System Readiness */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                borderRadius: 'var(--radius-sm)',
-                background: systemReady
-                  ? 'rgba(16, 185, 129, 0.08)'
-                  : 'rgba(239, 68, 68, 0.08)',
-                border: `1px solid ${
-                  systemReady ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'
-                }`,
-                fontSize: '0.78rem',
-              }}
-            >
-              <Database
-                size={14}
-                color={systemReady ? 'var(--color-success)' : 'var(--color-error)'}
-              />
-              <span style={{ color: systemReady ? '#34d399' : '#f87171', fontWeight: 500 }}>
-                {systemReady ? 'DB & S3 Siap' : 'Sistem Offline'}
-              </span>
-            </div>
-
-            {/* SSE Live Status */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                borderRadius: 'var(--radius-sm)',
-                background: sseConnected
-                  ? 'rgba(99, 102, 241, 0.1)'
-                  : 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid var(--border-subtle)',
-                fontSize: '0.78rem',
-              }}
-            >
-              <span
+            {/* Unified System Status Button with Popup */}
+            <div style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setShowStatusPopup(!showStatusPopup)}
+                className="btn btn-secondary"
                 style={{
-                  width: '7px',
-                  height: '7px',
-                  borderRadius: '50%',
-                  background: sseConnected ? 'var(--color-success)' : 'var(--text-dim)',
-                  boxShadow: sseConnected ? '0 0 10px #10b981' : 'none',
-                }}
-              />
-              <Radio size={13} color={sseConnected ? '#818cf8' : 'var(--text-dim)'} />
-              <span style={{ color: sseConnected ? '#cbd5e1' : 'var(--text-dim)' }}>
-                {sseConnected ? 'SSE Live' : 'Connecting SSE...'}
-              </span>
-            </div>
-
-            {/* YouTube Quota Tracker (6 video/hari limit) */}
-            {quota && (
-              <div
-                style={{
+                  padding: '6px 12px',
+                  fontSize: '0.78rem',
+                  gap: '7px',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '8px',
-                  padding: '6px 14px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'rgba(255, 0, 51, 0.08)',
-                  border: '1px solid rgba(255, 0, 51, 0.2)',
-                  fontSize: '0.78rem',
                 }}
-                title={`Pemakaian kuota: ${quota.quotaUsed} / ${quota.quotaLimit} unit (1 video = 1.600 unit)`}
               >
-                <YouTubeIcon size={15} />
-                <span style={{ color: '#f8fafc', fontWeight: 600 }}>
-                  {quota.remainingVideos}{' '}
-                  <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>/ 6 video YouTube hari ini</span>
-                </span>
-              </div>
-            )}
+                <span
+                  style={{
+                    width: '7px',
+                    height: '7px',
+                    borderRadius: '50%',
+                    background: systemReady && sseConnected ? 'var(--color-success)' : 'var(--color-warning)',
+                    boxShadow: systemReady && sseConnected ? '0 0 8px rgba(16, 185, 129, 0.6)' : 'none',
+                  }}
+                />
+                <span style={{ fontWeight: 600 }}>Status Sistem</span>
+                {quota && (
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      color: 'var(--text-muted)',
+                      borderLeft: '1px solid var(--border-subtle)',
+                      paddingLeft: '6px',
+                    }}
+                  >
+                    {quota.remainingVideos}/6 Quota
+                  </span>
+                )}
+                <ChevronDown size={13} color="var(--text-dim)" />
+              </button>
+
+              {/* Status Popover Dropdown */}
+              {showStatusPopup && (
+                <>
+                  <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 45 }}
+                    onClick={() => setShowStatusPopup(false)}
+                  />
+                  <div
+                    className="glass-panel"
+                    style={{
+                      position: 'absolute',
+                      top: 'calc(100% + 8px)',
+                      right: 0,
+                      width: '280px',
+                      padding: '16px',
+                      zIndex: 50,
+                      boxShadow: 'var(--shadow-card)',
+                      fontSize: '0.8rem',
+                      background: 'rgba(14, 20, 34, 0.98)',
+                      border: '1px solid var(--border-hover)',
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div
+                      style={{
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                        color: '#f8fafc',
+                        marginBottom: '12px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span>Detail Status Sistem</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onRefreshAll();
+                        }}
+                        className="btn btn-ghost"
+                        style={{ padding: '2px 6px', fontSize: '0.7rem' }}
+                        title="Perbarui Status"
+                      >
+                        <RotateCcw size={11} /> Refresh
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {/* 1. Database & Storage */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Database size={14} color={systemReady ? 'var(--color-success)' : 'var(--color-error)'} />
+                          <span style={{ color: 'var(--text-muted)' }}>Database & S3</span>
+                        </div>
+                        <span
+                          className={`badge ${systemReady ? 'badge-success' : 'badge-error'}`}
+                          style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                        >
+                          {systemReady ? 'DB & S3 Siap' : 'Offline'}
+                        </span>
+                      </div>
+
+                      {/* 2. SSE Live Connection */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Radio size={14} color={sseConnected ? 'var(--primary)' : 'var(--text-dim)'} />
+                          <span style={{ color: 'var(--text-muted)' }}>SSE Live Stream</span>
+                        </div>
+                        <span
+                          className={`badge ${sseConnected ? 'badge-success' : 'badge-warning'}`}
+                          style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                        >
+                          {sseConnected ? 'SSE Live' : 'Reconnecting'}
+                        </span>
+                      </div>
+
+                      {/* 3. YouTube Quota */}
+                      {quota && (
+                        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '10px', marginTop: '4px' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              marginBottom: '6px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <YouTubeIcon size={14} />
+                              <span style={{ color: 'var(--text-muted)' }}>YouTube Quota</span>
+                            </div>
+                            <strong style={{ color: '#ff4d4d', fontSize: '0.75rem' }}>
+                              {quota.remainingVideos} / 6 Video
+                            </strong>
+                          </div>
+
+                          <div
+                            style={{
+                              width: '100%',
+                              height: '5px',
+                              background: 'rgba(255, 255, 255, 0.08)',
+                              borderRadius: '3px',
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <div
+                              style={{
+                                height: '100%',
+                                width: `${(quota.quotaUsed / quota.quotaLimit) * 100}%`,
+                                background: '#ff0033',
+                              }}
+                            />
+                          </div>
+
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              color: 'var(--text-dim)',
+                              display: 'block',
+                              marginTop: '5px',
+                            }}
+                          >
+                            {quota.quotaUsed} / {quota.quotaLimit} unit terpakai ({quota.remainingUnits} tersisa)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* API Docs Link */}
             <a

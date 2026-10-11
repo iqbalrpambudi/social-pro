@@ -5,7 +5,9 @@ import { eq, and, desc, isNull } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import * as schema from '../../db/schema/index.js';
 import { env } from '../../config/env.js';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import {
+  s3Client,
   generatePresignedUploadUrl,
   generatePresignedDownloadUrl,
   verifyMediaObject,
@@ -195,7 +197,7 @@ mediaRouter.get('/:mediaId', async (c) => {
 
   let previewUrl: string | null = null;
   if (media.status === 'ready') {
-    previewUrl = await generatePresignedDownloadUrl(media.storageKey, 3600);
+    previewUrl = `${env.API_BASE_URL}/v1/media/${media.id}/stream?token=${env.API_SECRET_TOKEN}`;
   }
 
   return c.json({
@@ -211,6 +213,49 @@ mediaRouter.get('/:mediaId', async (c) => {
     previewUrl,
     createdAt: media.createdAt.toISOString(),
   });
+});
+
+// 3.1. Stream Video / Media Langsung dengan Range Request (HTML5 Video Player)
+mediaRouter.get('/:mediaId/stream', async (c) => {
+  const mediaId = c.req.param('mediaId');
+  const token = c.req.query('token') || c.req.header('authorization')?.replace('Bearer ', '');
+  if (token && token !== env.API_SECRET_TOKEN) {
+    return c.text('Unauthorized', 401);
+  }
+
+  const [media] = await db
+    .select()
+    .from(schema.mediaAssets)
+    .where(and(eq(schema.mediaAssets.id, mediaId), isNull(schema.mediaAssets.deletedAt)))
+    .limit(1);
+
+  if (!media || media.status !== 'ready') {
+    return c.text('Media not ready or not found', 404);
+  }
+
+  const range = c.req.header('range');
+  const getCmd = new GetObjectCommand({
+    Bucket: env.STORAGE_BUCKET,
+    Key: media.storageKey,
+    Range: range,
+  });
+
+  try {
+    const res = await s3Client.send(getCmd);
+    const headers: Record<string, string> = {
+      'Content-Type': media.mimeType || 'video/mp4',
+      'Accept-Ranges': 'bytes',
+    };
+    if (res.ContentRange) headers['Content-Range'] = res.ContentRange;
+    if (res.ContentLength) headers['Content-Length'] = String(res.ContentLength);
+
+    return new Response(res.Body as any, {
+      status: range ? 206 : 200,
+      headers,
+    });
+  } catch (err: any) {
+    return c.text(`Streaming error: ${err.message}`, 500);
+  }
 });
 
 // 4. Daftar media milik user
@@ -247,7 +292,7 @@ mediaRouter.get('/', async (c) => {
       sizeBytes: m.sizeBytes,
       previewUrl:
         m.status === 'ready'
-          ? await generatePresignedDownloadUrl(m.storageKey, 3600)
+          ? `${env.API_BASE_URL}/v1/media/${m.id}/stream?token=${env.API_SECRET_TOKEN}`
           : null,
       createdAt: m.createdAt.toISOString(),
     }))

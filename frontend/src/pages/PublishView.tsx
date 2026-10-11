@@ -1,12 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   UploadCloud,
-  Film,
-  Image,
   CheckCircle2,
   AlertCircle,
   Clock,
-  Sparkles,
   Send,
   FileVideo,
   X,
@@ -26,7 +23,6 @@ export const PublishView: React.FC<PublishViewProps> = ({
   onPublicationCreated,
   onNavigateToAccounts,
 }) => {
-  // Video upload states
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [uploadedVideo, setUploadedVideo] = useState<MediaAsset | null>(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
@@ -34,31 +30,25 @@ export const PublishView: React.FC<PublishViewProps> = ({
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // Thumbnail upload states
-  const [thumbFile, setThumbFile] = useState<File | null>(null);
-  const [uploadedThumb, setUploadedThumb] = useState<MediaAsset | null>(null);
-  const [thumbPreviewUrl, setThumbPreviewUrl] = useState<string | null>(null);
-
-  // Metadata states
+  // Form states
   const [title, setTitle] = useState('');
   const [caption, setCaption] = useState('');
   const [visibility, setVisibility] = useState<'public' | 'unlisted' | 'private'>('public');
-
-  // Target accounts states
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
-
-  // Schedule states
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState('');
-
-  // Submit state
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishSuccessMessage, setPublishSuccessMessage] = useState<string | null>(null);
 
   const videoInputRef = useRef<HTMLInputElement>(null);
-  const thumbInputRef = useRef<HTMLInputElement>(null);
 
-  // Handle Video Selection and Direct S3 Upload
+  // Otomatis pilih akun pertama jika hanya ada 1 akun
+  useEffect(() => {
+    if (socialAccounts.length > 0 && selectedAccountIds.length === 0) {
+      setSelectedAccountIds([socialAccounts[0].id]);
+    }
+  }, [socialAccounts]);
+
   const handleVideoSelect = async (file: File) => {
     if (!file.type.startsWith('video/')) {
       setUploadError('File harus berupa video (MP4, MOV, WEBM).');
@@ -70,29 +60,22 @@ export const PublishView: React.FC<PublishViewProps> = ({
     setIsUploading(true);
     setUploadProgress(0);
 
-    // Default title dari filename tanpa ekstensi
+    // Default title dari filename
     const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
     if (!title) {
       setTitle(nameWithoutExt);
     }
 
     try {
-      // 1. Minta presigned URL dari backend API
       const session = await api.createUploadSession(file.name, file.type, file.size);
-
-      // 2. Upload binary langsung ke Object Storage via presigned PUT URL
       await api.uploadToPresignedUrl(
         session.upload.url,
         file.type,
         file,
         (percent) => setUploadProgress(percent)
       );
-
-      // 3. Konfirmasi upload selesai ke backend
       const completeRes = await api.completeUpload(session.media.id);
       setUploadedVideo(completeRes.media);
-
-      // Buat URL preview lokal untuk player
       setVideoPreviewUrl(URL.createObjectURL(file));
       setUploadProgress(null);
     } catch (err: any) {
@@ -101,25 +84,6 @@ export const PublishView: React.FC<PublishViewProps> = ({
       setUploadProgress(null);
     } finally {
       setIsUploading(false);
-    }
-  };
-
-  // Handle Thumbnail Selection and Upload
-  const handleThumbSelect = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      alert('Thumbnail harus berupa gambar (JPG, PNG, WEBP).');
-      return;
-    }
-
-    setThumbFile(file);
-    try {
-      const session = await api.createUploadSession(file.name, file.type, file.size);
-      await api.uploadToPresignedUrl(session.upload.url, file.type, file);
-      const completeRes = await api.completeUpload(session.media.id);
-      setUploadedThumb(completeRes.media);
-      setThumbPreviewUrl(URL.createObjectURL(file));
-    } catch (err: any) {
-      alert(`Gagal mengunggah thumbnail: ${err.message}`);
     }
   };
 
@@ -133,12 +97,12 @@ export const PublishView: React.FC<PublishViewProps> = ({
     e.preventDefault();
 
     if (!uploadedVideo) {
-      alert('Silakan unggah video terlebih dahulu.');
+      alert('Silakan pilih dan unggah video terlebih dahulu.');
       return;
     }
 
     if (selectedAccountIds.length === 0) {
-      alert('Pilih minimal satu akun sosial media tujuan.');
+      alert('Pilih minimal satu akun YouTube tujuan.');
       return;
     }
 
@@ -149,36 +113,33 @@ export const PublishView: React.FC<PublishViewProps> = ({
       const targets = selectedAccountIds.map((accId) => ({
         socialAccountId: accId,
         title: title.trim(),
-        caption: caption.trim(),
+        caption: caption.trim() || undefined,
         visibility,
-        thumbnailMediaId: uploadedThumb ? uploadedThumb.id : undefined,
       }));
 
-      const scheduleAt =
+      const scheduleAtISO =
         isScheduled && scheduledDate ? new Date(scheduledDate).toISOString() : null;
 
       await api.createPublication({
         mediaId: uploadedVideo.id,
         targets,
-        scheduleAt,
+        scheduleAt: scheduleAtISO,
       });
 
       setPublishSuccessMessage(
-        'Publikasi berhasil dikirim ke antrian worker! Status akan diperbarui secara real-time.'
+        isScheduled
+          ? `Video berhasil dijadwalkan untuk ${new Date(scheduledDate).toLocaleString('id-ID')}!`
+          : 'Video berhasil diantrekan! Buka tab "Live Monitoring" untuk memantau progres.'
       );
 
       // Reset form
-      setVideoFile(null);
       setUploadedVideo(null);
       setVideoPreviewUrl(null);
-      setThumbFile(null);
-      setUploadedThumb(null);
-      setThumbPreviewUrl(null);
+      setVideoFile(null);
       setTitle('');
       setCaption('');
-      setSelectedAccountIds([]);
-
-      // Notify parent to refresh list
+      setIsScheduled(false);
+      setScheduledDate('');
       onPublicationCreated();
     } catch (err: any) {
       alert(`Gagal membuat publikasi: ${err.message}`);
@@ -188,373 +149,315 @@ export const PublishView: React.FC<PublishViewProps> = ({
   };
 
   return (
-    <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '24px 16px' }}>
-      {/* Success banner */}
+    <div style={{ maxWidth: '820px', margin: '0 auto', padding: '24px 16px' }}>
+      {/* Header Sederhana */}
+      <div style={{ marginBottom: '22px' }}>
+        <h2 style={{ fontSize: '1.25rem', fontWeight: 800 }}>Buat Publikasi Video</h2>
+        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          Unggah video dan kirimkan ke channel YouTube Anda dalam hitungan detik
+        </p>
+      </div>
+
+      {/* Success Alert Banner */}
       {publishSuccessMessage && (
         <div
+          className="glass-panel"
           style={{
-            background: 'rgba(16, 185, 129, 0.12)',
+            background: 'var(--color-success-bg)',
             border: '1px solid rgba(16, 185, 129, 0.3)',
+            padding: '14px 18px',
             borderRadius: 'var(--radius-md)',
-            padding: '16px 20px',
-            marginBottom: '24px',
+            marginBottom: '20px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: '12px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <CheckCircle2 color="var(--color-success)" size={22} />
-            <span style={{ color: '#34d399', fontWeight: 600 }}>{publishSuccessMessage}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <CheckCircle2 color="var(--color-success)" size={20} />
+            <span style={{ color: '#34d399', fontWeight: 600, fontSize: '0.86rem' }}>
+              {publishSuccessMessage}
+            </span>
           </div>
           <button
+            type="button"
             className="btn btn-ghost"
             style={{ padding: '4px', color: '#34d399' }}
             onClick={() => setPublishSuccessMessage(null)}
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
       )}
 
       <form onSubmit={handlePublish}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1fr)',
-            gap: '24px',
-            alignItems: 'start',
-          }}
-        >
-          {/* LEFT COLUMN: Media Upload & Preview */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Video Uploader Card */}
-            <div className="glass-panel" style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                <Film size={20} color="var(--primary)" />
-                <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>1. Unggah Video</h2>
-              </div>
+        <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* 1. Upload Video Dropzone */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, marginBottom: '8px' }}>
+              File Video *
+            </label>
 
-              {!uploadedVideo && !isUploading ? (
+            {!uploadedVideo && !isUploading ? (
+              <div
+                style={{
+                  border: '2px dashed var(--border-hover)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '32px 16px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  background: 'rgba(255, 255, 255, 0.015)',
+                  transition: 'border-color 0.15s ease',
+                }}
+                onClick={() => videoInputRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (e.dataTransfer.files[0]) handleVideoSelect(e.dataTransfer.files[0]);
+                }}
+              >
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/mp4,video/quicktime,video/webm"
+                  style={{ display: 'none' }}
+                  onChange={(e) => e.target.files?.[0] && handleVideoSelect(e.target.files[0])}
+                />
                 <div
                   style={{
-                    border: '2px dashed var(--border-hover)',
-                    borderRadius: 'var(--radius-lg)',
-                    padding: '40px 20px',
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    background: 'rgba(255, 255, 255, 0.02)',
-                    transition: 'all 0.2s ease',
-                  }}
-                  onClick={() => videoInputRef.current?.click()}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (e.dataTransfer.files[0]) handleVideoSelect(e.dataTransfer.files[0]);
-                  }}
-                >
-                  <input
-                    ref={videoInputRef}
-                    type="file"
-                    accept="video/mp4,video/quicktime,video/webm"
-                    style={{ display: 'none' }}
-                    onChange={(e) => e.target.files?.[0] && handleVideoSelect(e.target.files[0])}
-                  />
-                  <div
-                    style={{
-                      width: '56px',
-                      height: '56px',
-                      borderRadius: '50%',
-                      background: 'rgba(99, 102, 241, 0.1)',
-                      color: 'var(--primary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      margin: '0 auto 16px',
-                    }}
-                  >
-                    <UploadCloud size={28} />
-                  </div>
-                  <h4 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '6px' }}>
-                    Klik atau tarik file video ke sini
-                  </h4>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
-                    Mendukung MP4, QuickTime (MOV), WebM hingga 1 GB
-                  </p>
-                  <p style={{ fontSize: '0.72rem', color: '#818cf8', marginTop: '10px' }}>
-                    ⚡ Direct upload ke private S3 storage (presigned URL)
-                  </p>
-                </div>
-              ) : null}
-
-              {/* Uploading Progress */}
-              {isUploading && (
-                <div
-                  style={{
-                    padding: '30px 20px',
-                    textAlign: 'center',
-                    background: 'rgba(255, 255, 255, 0.02)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-subtle)',
-                  }}
-                >
-                  <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-                    <FileVideo size={24} color="var(--primary)" />
-                    <span style={{ fontWeight: 600 }}>{videoFile?.name}</span>
-                  </div>
-                  <div
-                    style={{
-                      width: '100%',
-                      height: '10px',
-                      background: 'rgba(255, 255, 255, 0.08)',
-                      borderRadius: '5px',
-                      overflow: 'hidden',
-                      marginBottom: '10px',
-                    }}
-                  >
-                    <div
-                      style={{
-                        height: '100%',
-                        width: `${uploadProgress || 0}%`,
-                        background: 'var(--gradient-brand)',
-                        transition: 'width 0.15s ease',
-                      }}
-                    />
-                  </div>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                    Mengunggah langsung ke S3: {uploadProgress ?? 0}%
-                  </p>
-                </div>
-              )}
-
-              {/* Upload Error */}
-              {uploadError && (
-                <div
-                  style={{
-                    marginTop: '14px',
-                    padding: '12px 16px',
-                    background: 'var(--color-error-bg)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    borderRadius: 'var(--radius-md)',
+                    width: '46px',
+                    height: '46px',
+                    borderRadius: '50%',
+                    background: 'rgba(99, 102, 241, 0.12)',
+                    color: 'var(--primary)',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px',
-                    color: '#f87171',
-                    fontSize: '0.85rem',
+                    justifyContent: 'center',
+                    margin: '0 auto 12px',
                   }}
                 >
-                  <AlertCircle size={18} />
-                  <span>{uploadError}</span>
+                  <UploadCloud size={24} />
                 </div>
-              )}
-
-              {/* Completed Video Preview Player */}
-              {uploadedVideo && videoPreviewUrl && (
-                <div style={{ marginTop: '10px' }}>
-                  <div
-                    style={{
-                      borderRadius: 'var(--radius-md)',
-                      overflow: 'hidden',
-                      background: '#000',
-                      border: '1px solid var(--border-subtle)',
-                      position: 'relative',
-                      maxHeight: '340px',
-                    }}
-                  >
-                    <video
-                      src={videoPreviewUrl}
-                      controls
-                      style={{ width: '100%', maxHeight: '340px', display: 'block' }}
-                    />
-                  </div>
-                  <div
-                    style={{
-                      marginTop: '12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      fontSize: '0.8rem',
-                      color: 'var(--text-muted)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <CheckCircle2 size={16} color="var(--color-success)" />
-                      <span style={{ color: '#34d399', fontWeight: 600 }}>Tersimpan di S3</span>
-                      <span>• {(uploadedVideo.sizeBytes / (1024 * 1024)).toFixed(1)} MB</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{ fontSize: '0.75rem', padding: '4px 8px' }}
-                      onClick={() => {
-                        setUploadedVideo(null);
-                        setVideoPreviewUrl(null);
-                        setVideoFile(null);
-                      }}
-                    >
-                      Ganti Video
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Custom Thumbnail Card (Optional) */}
-            <div className="glass-panel" style={{ padding: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Image size={18} color="var(--primary)" />
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 600 }}>2. Custom Thumbnail (Opsional)</h3>
-                </div>
-                <span className="badge badge-neutral">Opsional</span>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '4px' }}>
+                  Pilih atau Tarik File Video ke Sini
+                </h4>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                  Mendukung format MP4, QuickTime (MOV), WebM hingga 1 GB
+                </p>
               </div>
+            ) : null}
 
-              {!thumbPreviewUrl ? (
+            {/* Uploading Progress */}
+            {isUploading && (
+              <div
+                style={{
+                  padding: '24px 18px',
+                  textAlign: 'center',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                  <FileVideo size={20} color="var(--primary)" />
+                  <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{videoFile?.name}</span>
+                </div>
                 <div
                   style={{
-                    border: '1px dashed var(--border-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '16px',
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    background: 'rgba(255, 255, 255, 0.01)',
+                    width: '100%',
+                    height: '8px',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    borderRadius: '4px',
+                    overflow: 'hidden',
+                    marginBottom: '8px',
                   }}
-                  onClick={() => thumbInputRef.current?.click()}
                 >
-                  <input
-                    ref={thumbInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    style={{ display: 'none' }}
-                    onChange={(e) => e.target.files?.[0] && handleThumbSelect(e.target.files[0])}
-                  />
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    + Klik untuk memilih cover/thumbnail gambar (JPG/PNG)
-                  </p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <img
-                    src={thumbPreviewUrl}
-                    alt="Thumbnail preview"
+                  <div
                     style={{
-                      width: '120px',
-                      height: '68px',
-                      objectFit: 'cover',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border-subtle)',
+                      height: '100%',
+                      width: `${uploadProgress || 0}%`,
+                      background: 'var(--primary)',
+                      transition: 'width 0.15s ease',
                     }}
                   />
-                  <div>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-main)', fontWeight: 600 }}>
-                      {thumbFile?.name}
-                    </p>
-                    <span className="badge badge-success" style={{ marginTop: '4px' }}>
-                      Thumbnail Siap
-                    </span>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{ fontSize: '0.75rem', padding: '4px', display: 'block', marginTop: '6px' }}
-                      onClick={() => {
-                        setThumbPreviewUrl(null);
-                        setUploadedThumb(null);
-                        setThumbFile(null);
-                      }}
-                    >
-                      Hapus
-                    </button>
-                  </div>
                 </div>
-              )}
-            </div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Mengunggah ke private storage: {uploadProgress ?? 0}%
+                </span>
+              </div>
+            )}
+
+            {/* Upload Error */}
+            {uploadError && (
+              <div
+                style={{
+                  marginTop: '10px',
+                  padding: '10px 14px',
+                  background: 'var(--color-error-bg)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: 'var(--radius-sm)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  color: '#f87171',
+                  fontSize: '0.8rem',
+                }}
+              >
+                <AlertCircle size={16} />
+                <span>{uploadError}</span>
+              </div>
+            )}
+
+            {/* Uploaded Video Preview Box */}
+            {uploadedVideo && videoPreviewUrl && (
+              <div
+                style={{
+                  padding: '14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <div
+                  style={{
+                    borderRadius: 'var(--radius-sm)',
+                    overflow: 'hidden',
+                    background: '#000',
+                    maxHeight: '260px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <video
+                    src={videoPreviewUrl}
+                    controls
+                    style={{ width: '100%', maxHeight: '260px', outline: 'none' }}
+                  />
+                </div>
+                <div
+                  style={{
+                    marginTop: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '0.78rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <CheckCircle2 size={15} color="var(--color-success)" />
+                    <span style={{ color: '#34d399', fontWeight: 600 }}>Video Siap</span>
+                    <span style={{ color: 'var(--text-dim)' }}>
+                      • {(uploadedVideo.sizeBytes / (1024 * 1024)).toFixed(1)} MB
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                    onClick={() => {
+                      setUploadedVideo(null);
+                      setVideoPreviewUrl(null);
+                      setVideoFile(null);
+                    }}
+                  >
+                    Ganti Video
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* RIGHT COLUMN: Metadata & Target Platforms */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Metadata Card */}
-            <div className="glass-panel" style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-                <Sparkles size={20} color="var(--primary)" />
-                <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>3. Informasi Video</h2>
-              </div>
+          {/* 2. Judul & Deskripsi */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, marginBottom: '6px' }}>
+              Judul Video *
+            </label>
+            <input
+              type="text"
+              className="input"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Masukkan judul video..."
+              required
+            />
+          </div>
 
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  Judul Video *
-                </label>
-                <input
-                  type="text"
-                  className="input"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Masukkan judul video yang menarik"
-                  required
-                />
-              </div>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, marginBottom: '6px' }}>
+              Deskripsi / Caption
+            </label>
+            <textarea
+              className="textarea"
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              placeholder="Tulis deskripsi, tag, atau hashtag..."
+              rows={3}
+            />
+          </div>
 
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  Caption / Deskripsi
-                </label>
-                <textarea
-                  className="textarea"
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  placeholder="Tulis deskripsi, tag, dan hashtag #shorts #viral..."
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  Visibilitas / Privacy
-                </label>
-                <select
-                  className="select"
-                  value={visibility}
-                  onChange={(e) => setVisibility(e.target.value as any)}
-                >
-                  <option value="public">Publik (Dapat ditonton semua orang)</option>
-                  <option value="unlisted">Unlisted (Hanya yang memiliki link)</option>
-                  <option value="private">Privat (Hanya akun pengunggah)</option>
-                </select>
-              </div>
+          {/* 3. Visibilitas & Target Channel dalam 2 Kolom Rapi */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              gap: '16px',
+            }}
+          >
+            {/* Visibilitas */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 700, marginBottom: '6px' }}>
+                Visibilitas di YouTube
+              </label>
+              <select
+                className="select"
+                value={visibility}
+                onChange={(e) => setVisibility(e.target.value as any)}
+              >
+                <option value="public">Publik (Semua orang dapat menonton)</option>
+                <option value="unlisted">Unlisted (Hanya yang memiliki tautan)</option>
+                <option value="private">Privat (Hanya Anda)</option>
+              </select>
             </div>
 
-            {/* Target Accounts Card */}
-            <div className="glass-panel" style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                <h2 style={{ fontSize: '1.05rem', fontWeight: 700 }}>4. Akun Media Sosial Tujuan</h2>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  {selectedAccountIds.length} dipilih
-                </span>
+            {/* Target Channel */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={{ fontSize: '0.84rem', fontWeight: 700 }}>
+                  Channel Tujuan *
+                </label>
+                {socialAccounts.length > 0 && (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>
+                    {selectedAccountIds.length} dipilih
+                  </span>
+                )}
               </div>
 
               {socialAccounts.length === 0 ? (
                 <div
                   style={{
-                    padding: '20px',
-                    borderRadius: 'var(--radius-md)',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-sm)',
                     background: 'rgba(255, 255, 255, 0.02)',
-                    textAlign: 'center',
                     border: '1px solid var(--border-subtle)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
                   }}
                 >
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
-                    Belum ada akun sosial media yang terhubung.
-                  </p>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Belum ada akun</span>
                   <button
                     type="button"
-                    className="btn btn-secondary"
-                    style={{ fontSize: '0.8rem' }}
                     onClick={onNavigateToAccounts}
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.72rem', padding: '4px 8px' }}
                   >
-                    + Hubungkan Akun Sekarang
+                    + Hubungkan
                   </button>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {socialAccounts.map((acc) => {
                     const isSelected = selectedAccountIds.includes(acc.id);
                     return (
@@ -565,119 +468,88 @@ export const PublishView: React.FC<PublishViewProps> = ({
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          padding: '12px 16px',
-                          borderRadius: 'var(--radius-md)',
+                          padding: '8px 12px',
+                          borderRadius: 'var(--radius-sm)',
                           background: isSelected
-                            ? 'rgba(99, 102, 241, 0.15)'
-                            : 'rgba(255, 255, 255, 0.03)',
+                            ? 'rgba(62, 207, 142, 0.1)'
+                            : 'rgba(255, 255, 255, 0.02)',
                           border: `1px solid ${
-                            isSelected ? 'rgba(99, 102, 241, 0.4)' : 'var(--border-subtle)'
+                            isSelected ? 'rgba(62, 207, 142, 0.4)' : 'var(--border-subtle)'
                           }`,
                           cursor: 'pointer',
                           transition: 'all 0.15s ease',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <div
-                            style={{
-                              width: '32px',
-                              height: '32px',
-                              borderRadius: '8px',
-                              background:
-                                acc.platform === 'youtube'
-                                  ? 'rgba(255, 0, 51, 0.15)'
-                                  : 'rgba(99, 102, 241, 0.15)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <YouTubeIcon size={18} />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>{acc.displayName}</div>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', textTransform: 'capitalize' }}>
-                              Platform: {acc.platform}
-                            </div>
-                          </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <YouTubeIcon size={16} />
+                          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#f8fafc' }}>
+                            {acc.displayName}
+                          </span>
                         </div>
-
-                        <div
-                          style={{
-                            width: '20px',
-                            height: '20px',
-                            borderRadius: '6px',
-                            border: `2px solid ${
-                              isSelected ? 'var(--primary)' : 'var(--border-hover)'
-                            }`,
-                            background: isSelected ? 'var(--primary)' : 'transparent',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          {isSelected && <CheckCircle2 size={14} color="#fff" />}
-                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          style={{ cursor: 'pointer', accentColor: 'var(--primary)' }}
+                        />
                       </div>
                     );
                   })}
                 </div>
               )}
             </div>
+          </div>
 
-            {/* Schedule Option */}
-            <div className="glass-panel" style={{ padding: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isScheduled ? '12px' : '0' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Clock size={18} color="var(--text-muted)" />
-                  <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>Jadwalkan Publikasi Nanti</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={isScheduled}
-                  onChange={(e) => setIsScheduled(e.target.checked)}
-                  style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                />
+          {/* 4. Jadwalkan (Opsional) */}
+          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Clock size={16} color="var(--text-muted)" />
+                <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>Jadwalkan untuk Waktu Tertentu</span>
               </div>
-
-              {isScheduled && (
-                <div style={{ marginTop: '10px' }}>
-                  <input
-                    type="datetime-local"
-                    className="input"
-                    value={scheduledDate}
-                    onChange={(e) => setScheduledDate(e.target.value)}
-                    required={isScheduled}
-                  />
-                  <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '4px' }}>
-                    Waktu publikasi akan dikonversi dan diproses dalam UTC oleh database scheduler.
-                  </p>
-                </div>
-              )}
+              <input
+                type="checkbox"
+                checked={isScheduled}
+                onChange={(e) => setIsScheduled(e.target.checked)}
+                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--primary)' }}
+              />
             </div>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={!uploadedVideo || selectedAccountIds.length === 0 || isPublishing}
-              style={{
-                width: '100%',
-                padding: '14px',
-                fontSize: '1rem',
-                borderRadius: 'var(--radius-md)',
-              }}
-            >
-              {isPublishing ? (
-                'Memproses Publikasi...'
-              ) : (
-                <>
-                  <Send size={18} />
-                  Publikasikan Video ke {selectedAccountIds.length} Platform
-                </>
-              )}
-            </button>
+            {isScheduled && (
+              <div style={{ marginTop: '10px' }}>
+                <input
+                  type="datetime-local"
+                  className="input"
+                  value={scheduledDate}
+                  onChange={(e) => setScheduledDate(e.target.value)}
+                  required={isScheduled}
+                  style={{ maxWidth: '300px' }}
+                />
+              </div>
+            )}
           </div>
+
+          {/* 5. Submit Button */}
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={!uploadedVideo || selectedAccountIds.length === 0 || isPublishing}
+            style={{
+              padding: '12px',
+              fontSize: '0.92rem',
+              fontWeight: 700,
+              marginTop: '4px',
+            }}
+          >
+            {isPublishing ? (
+              'Memproses Publikasi...'
+            ) : (
+              <>
+                <Send size={16} />
+                {isScheduled ? 'Jadwalkan Video' : 'Publikasikan Video Sekarang'}
+              </>
+            )}
+          </button>
         </div>
       </form>
     </div>
